@@ -39,6 +39,6 @@ deploy-logs:
 	docker-compose -f docker-compose.beta-deploy.yml logs -f
 
 deploy-configs:
-	rsync -avvz -L -e "ssh -p 2022" ./.config/config.json core-admin@awning.app:/srv/apps/awning_backend/config/
-	rsync -avvz -L -e "ssh -p 2022" ./.config/prompts core-admin@awning.app:/srv/apps/awning_backend/config/
-	rsync -avvz -L -e "ssh -p 2022" ./.private/service_credentials.json core-admin@awning.app:/srv/apps/awning_backend/creds/
+	rsync -avvz -L -e "ssh -p 2022" ./.config/config.json core-admin@awning.app:/srv/apps/awning_backend/config/ || true
+	rsync -avvz -L -e "ssh -p 2022" ./.config/prompts core-admin@awning.app:/srv/apps/awning_backend/config/ || true
+	rsync -avvz -L -e "ssh -p 2022" ./.private/service_credentials.json core-admin@awning.app:/srv/apps/awning_backend/creds/ || true

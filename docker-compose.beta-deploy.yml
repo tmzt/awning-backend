@@ -5,6 +5,7 @@ services:
     image: ghcr.io/tmzt/awning-backend:latest
     networks:
       - proxy
+      - redis_temp
     ports:
       - "4000:4000"
 
@@ -21,7 +22,12 @@ services:
       - CONFIG_DIR=/app/config
       - CONFIG_FILE=/app/config/config.yaml
       - SERVICE_CREDENTIALS_FILE=/app/creds/service_credentials.json
+      - REDIS_ADDR=redis-temp:6379
+      - TRUSTED_PROXIES=172.16.0.0/16
 
 networks:
   proxy:
     external: true
+  redis_temp:
+    external: true
+    name: 'redis-temp_redis_temp'

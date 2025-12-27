@@ -185,31 +185,31 @@ func main() {
 	// Configure CORS
 	corsConfig := cors.DefaultConfig()
 
-	// corsOrigins := getEnv("CORS_ORIGINS", "")
-	// if env != "development" && corsOrigins == "" {
-	// 	slog.Error("In production mode, CORS_ORIGINS must be set")
-	// 	os.Exit(1)
-	// } else if corsOrigins != "" {
-	// 	slog.Info("CORS origins set from CORS_ORIGINS")
-	// 	corsConfig.AllowOrigins = strings.Split(corsOrigins, ",")
-	// } else {
-	// 	slog.Warn("Using default origin function in non-production mode (CORS_ORIGINS not defined)")
-	// 	corsConfig.AllowOriginFunc = func(origin string) bool {
-	// 		// slog.Info("CORS origin check", "origin", origin)
-	// 		fmt.Println("CORS origin check:", origin)
-	// 		if origin == "http://localhost" || strings.HasPrefix(origin, "http://localhost:") {
-	// 			return true
-	// 		}
-	// 		return false
-	// 	}
-	// }
-
-	corsConfig.AllowOriginFunc = func(origin string) bool {
-		if origin == "http://localhost" || strings.HasPrefix(origin, "http://localhost:") {
-			return true
+	corsOrigins := getEnv("CORS_ORIGINS", "")
+	if env != "development" && corsOrigins == "" {
+		slog.Error("In production mode, CORS_ORIGINS must be set")
+		os.Exit(1)
+	} else if corsOrigins != "" {
+		slog.Info("CORS origins set from CORS_ORIGINS")
+		corsConfig.AllowOrigins = strings.Split(corsOrigins, ",")
+	} else {
+		slog.Warn("Using default origin function in non-production mode (CORS_ORIGINS not defined)")
+		corsConfig.AllowOriginFunc = func(origin string) bool {
+			// slog.Info("CORS origin check", "origin", origin)
+			// fmt.Println("CORS origin check:", origin)
+			if origin == "http://localhost" || strings.HasPrefix(origin, "http://localhost:") {
+				return true
+			}
+			return false
 		}
-		return false
 	}
+
+	// corsConfig.AllowOriginFunc = func(origin string) bool {
+	// 	if origin == "http://localhost" || strings.HasPrefix(origin, "http://localhost:") {
+	// 		return true
+	// 	}
+	// 	return false
+	// }
 
 	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization", "X-Awning-Frontend-Key"}
