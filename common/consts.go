@@ -18,6 +18,8 @@ const (
 	DEFAULT_ENABLED_MODELS = "qwen/qwen3-next-80b-a3b-thinking-maas"
 	DEFAULT_MODEL          = "qwen/qwen3-next-80b-a3b-thinking-maas"
 
+	DEFAULT_VAR_DIR = ".var"
+
 	// Unsplash API constants
 	UNSPLASH_API_BASE_URL = "https://api.unsplash.com"
 )

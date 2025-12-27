@@ -25,6 +25,7 @@ type Config struct {
 	MockResponse             bool     `json:"mock_response"`
 	PostProcessMockResponses bool     `json:"post_process_mock_responses"`
 	MockContent              string   `json:"mock_content"`
+	VarDir                   string   `json:"var_dir"`
 	SaveResponses            bool     `json:"save_responses"`
 
 	ApiKey       string `json:"api_key"`
@@ -97,6 +98,7 @@ func DefaultConfig() *Config {
 		MockResponse:             false,
 		PostProcessMockResponses: false,
 		MockContent:              "",
+		VarDir:                   DEFAULT_VAR_DIR,
 		SaveResponses:            false,
 	}
 }
@@ -152,6 +154,9 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("MOCK_CONTENT"); v != "" {
 		c.MockContent = v
+	}
+	if v := os.Getenv("VAR_DIR"); v != "" {
+		c.VarDir = v
 	}
 	if v := os.Getenv("SAVE_RESPONSES"); v != "" {
 		c.SaveResponses = strings.ToLower(v) == "true" || v == "1"
@@ -211,6 +216,9 @@ func (c *Config) applyConfigOverrides(cfg *Config) {
 	c.PostProcessMockResponses = cfg.PostProcessMockResponses
 	if cfg.MockContent != "" {
 		c.MockContent = cfg.MockContent
+	}
+	if cfg.VarDir != "" {
+		c.VarDir = cfg.VarDir
 	}
 	c.SaveResponses = cfg.SaveResponses
 }
