@@ -10,6 +10,7 @@ services:
 
     volumes:
       - /srv/apps/awning_backend/config:/app/config:ro
+      - /srv/apps/awning_backend/creds:/app/creds:ro
 
     env_file:
       - .env.production
@@ -19,6 +20,7 @@ services:
       - APP_PORT=4000
       - CONFIG_DIR=/app/config
       - CONFIG_FILE=/app/config/config.yaml
+      - SERVICE_CREDENTIALS_FILE=/app/creds/service_credentials.json
 
 networks:
   proxy:
