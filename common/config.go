@@ -27,6 +27,11 @@ type Config struct {
 	MockContent              string   `json:"mock_content"`
 	SaveResponses            bool     `json:"save_responses"`
 
+	ApiKey       string `json:"api_key"`
+	ApiKeySecret string `json:"api_key_secret"`
+
+	ApiFrontendKey string `json:"api_frontend_key"`
+
 	enabledProcessorsMap map[string]struct{}
 	enabledModelsMap     map[string]struct{}
 }
@@ -75,6 +80,9 @@ func LoadConfigFile(path string) (*Config, error) {
 
 func DefaultConfig() *Config {
 	return &Config{
+		ApiKey:                   "",
+		ApiKeySecret:             "",
+		ApiFrontendKey:           "",
 		MinInputTokens:           DEFAULT_MIN_INPUT_TOKENS,
 		MaxInputTokens:           DEFAULT_MAX_INPUT_TOKENS,
 		MaxOutputTokens:          DEFAULT_MAX_OUTPUT_TOKENS,
@@ -94,6 +102,15 @@ func DefaultConfig() *Config {
 }
 
 func (c *Config) applyEnvOverrides() {
+	if v := os.Getenv("API_KEY"); v != "" {
+		c.ApiKey = v
+	}
+	if v := os.Getenv("API_KEY_SECRET"); v != "" {
+		c.ApiKeySecret = v
+	}
+	if v := os.Getenv("API_FRONTEND_KEY"); v != "" {
+		c.ApiFrontendKey = v
+	}
 	if v := os.Getenv("MIN_INPUT_TOKENS"); v != "" {
 		c.MinInputTokens = atoiOrDefault(v, c.MinInputTokens)
 	}
@@ -145,6 +162,15 @@ func (c *Config) applyEnvOverrides() {
 }
 
 func (c *Config) applyConfigOverrides(cfg *Config) {
+	if cfg.ApiKey != "" {
+		c.ApiKey = cfg.ApiKey
+	}
+	if cfg.ApiKeySecret != "" {
+		c.ApiKeySecret = cfg.ApiKeySecret
+	}
+	if cfg.ApiFrontendKey != "" {
+		c.ApiFrontendKey = cfg.ApiFrontendKey
+	}
 	if cfg.MinInputTokens != 0 {
 		c.MinInputTokens = cfg.MinInputTokens
 	}

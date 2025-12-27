@@ -9,6 +9,7 @@ import (
 
 	"awning-backend/common"
 	"awning-backend/handlers"
+	"awning-backend/middleware"
 	"awning-backend/processors"
 	"awning-backend/services"
 	"awning-backend/storage"
@@ -82,6 +83,18 @@ func main() {
 	}
 	slog.Info("Prompt template loaded successfully")
 
+	env := getEnv("APP_ENV", "production")
+
+	// Require api key and secret in production
+	// if env == "production" && (cfg.ApiKey == "" || cfg.ApiKeySecret == "") {
+	// 	slog.Error("API_KEY and API_KEY_SECRET must be set in environment or config in production")
+	// 	os.Exit(1)
+	// }
+	if env == "production" && cfg.ApiFrontendKey == "" {
+		slog.Error("API_FRONTEND_KEY must be set in environment or config in production")
+		os.Exit(1)
+	}
+
 	// Load Vertex AI credentials
 	var credData []byte
 	if s := getEnv("SERVICE_CREDENTIALS_JSON", ""); s != "" {
@@ -146,9 +159,7 @@ func main() {
 	// Initialize Gin router
 	r := gin.Default()
 
-	env := getEnv("APP_ENV", "production")
 	trustedProxies := getEnv("TRUSTED_PROXIES", "")
-	corsOrigins := getEnv("CORS_ORIGINS", "")
 
 	if env != "development" && trustedProxies == "" {
 		slog.Error("In production mode, TRUSTED_PROXIES must be set")
@@ -167,25 +178,46 @@ func main() {
 	// Configure CORS
 	corsConfig := cors.DefaultConfig()
 
-	if env != "development" && corsOrigins == "" {
-		slog.Error("In production mode, CORS_ORIGINS must be set")
-		os.Exit(1)
-	} else if corsOrigins != "" {
-		slog.Info("CORS origins set from CORS_ORIGINS")
-		corsConfig.AllowOrigins = strings.Split(corsOrigins, ",")
-	} else {
-		slog.Warn("Using default origin function in non-production mode (CORS_ORIGINS not defined)")
-		corsConfig.AllowOriginFunc = func(origin string) bool {
-			if origin == "http://localhost" || strings.HasPrefix(origin, "http://localhost:") {
-				return true
-			}
-			return false
+	// corsOrigins := getEnv("CORS_ORIGINS", "")
+	// if env != "development" && corsOrigins == "" {
+	// 	slog.Error("In production mode, CORS_ORIGINS must be set")
+	// 	os.Exit(1)
+	// } else if corsOrigins != "" {
+	// 	slog.Info("CORS origins set from CORS_ORIGINS")
+	// 	corsConfig.AllowOrigins = strings.Split(corsOrigins, ",")
+	// } else {
+	// 	slog.Warn("Using default origin function in non-production mode (CORS_ORIGINS not defined)")
+	// 	corsConfig.AllowOriginFunc = func(origin string) bool {
+	// 		// slog.Info("CORS origin check", "origin", origin)
+	// 		fmt.Println("CORS origin check:", origin)
+	// 		if origin == "http://localhost" || strings.HasPrefix(origin, "http://localhost:") {
+	// 			return true
+	// 		}
+	// 		return false
+	// 	}
+	// }
+
+	corsConfig.AllowOriginFunc = func(origin string) bool {
+		if origin == "http://localhost" || strings.HasPrefix(origin, "http://localhost:") {
+			return true
 		}
+		return false
 	}
 
 	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization", "X-Awning-Frontend-Key"}
 	r.Use(cors.New(corsConfig))
+
+	// // Require api key and secret for all requests
+	// r.Use(middleware.APIKeyAuthMiddleware(func(ctx context.Context, providedKey, providedSecret string) (context.Context, error) {
+	// 	if providedKey == cfg.ApiKey && providedSecret == cfg.ApiKeySecret {
+	// 		return ctx, nil
+	// 	}
+	// 	return ctx, middleware.ErrMissingAPICredentials
+	// }))
+
+	// Allow frontend API key for all requests
+	r.Use(middleware.APIFrontendKeyAuthMiddleware(cfg.ApiFrontendKey))
 
 	// API routes - streaming chat only
 	r.POST("/api/v1/chat/stream", chatHandler.CreateChatStream)

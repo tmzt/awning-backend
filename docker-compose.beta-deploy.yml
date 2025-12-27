@@ -11,6 +11,9 @@ services:
     volumes:
       - /srv/apps/awning/backend/config:/app/config:ro
 
+    env_file:
+      - .env.production
+
     environment:
       - ENV=production
       - APP_PORT=4000
