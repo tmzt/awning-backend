@@ -1,0 +1,21 @@
+
+services:
+  awning-app:
+    build: .
+    networks:
+      - proxy
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - /srv/apps/awning/app/public:/app/public:ro
+
+    environment:
+      - ENV=production
+      - APP_PORT=3000
+      - APP_PUBLIC=/app/public
+
+
+networks:
+  proxy:
+    external: true

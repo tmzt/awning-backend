@@ -1,0 +1,22 @@
+package common
+
+const (
+	PRIVATE_CREDENTIALS_FILE   = ".private/service_credentials.json"
+	PRIVATE_CREDENTIALS_DOTENV = ".env.private"
+	PROMPT_TEMPLATE_FILE       = ".config/prompt4.template"
+	DEFAULT_CONFIG_FILE        = ".config/config.json"
+
+	DEFAULT_MIN_INPUT_TOKENS  = 1
+	DEFAULT_MAX_INPUT_TOKENS  = 200000
+	DEFAULT_MAX_OUTPUT_TOKENS = 400000
+	DEFAULT_REDIS_ADDR        = "localhost:6379"
+	DEFAULT_REDIS_PASSWORD    = ""
+	DEFAULT_REDIS_PREFIX      = "awning:"
+	DEFAULT_LISTEN_ADDR       = ":4000"
+
+	DEFAULT_ENABLED_MODELS = "qwen/qwen3-next-80b-a3b-thinking-maas"
+	DEFAULT_MODEL          = "qwen/qwen3-next-80b-a3b-thinking-maas"
+
+	// Unsplash API constants
+	UNSPLASH_API_BASE_URL = "https://api.unsplash.com"
+)

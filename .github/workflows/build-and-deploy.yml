@@ -1,0 +1,87 @@
+name: Build and Deploy to GitHub Packages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SFTP_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # Add known hosts if provided
+          if [ -n "${{ secrets.SFTP_KNOWN_HOSTS }}" ]; then
+            echo "${{ secrets.SFTP_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          else
+            # Disable strict host key checking (less secure)
+            echo "StrictHostKeyChecking no" >> ~/.ssh/config
+          fi
+
+      - name: Trigger reload on SSH server
+        env:
+          SFTP_HOST: ${{ vars.SFTP_HOST }}
+          SFTP_USERNAME: ${{ vars.SFTP_USERNAME }}
+          SFTP_PORT: ${{ vars.SFTP_PORT || '22' }}
+          DEPLOY_COMMAND: ${{ vars.SSH_DEPLOY_BACKEND_COMMAND }}
+        run: |
+          # Execute reload command on remote server
+          if [ -n "$DEPLOY_COMMAND" ]; then
+            ssh -i ~/.ssh/deploy_key \
+              -p $SFTP_PORT \
+              $SFTP_USERNAME@$SFTP_HOST \
+              "$DEPLOY_COMMAND"
+          else
+            echo "No SSH_DEPLOY_BACKEND_COMMAND configured, skipping reload"
+          fi
+
+      - name: Cleanup SSH key
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key
