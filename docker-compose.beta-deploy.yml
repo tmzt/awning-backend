@@ -1,0 +1,22 @@
+
+services:
+  awning-app:
+    # build: .
+    image: ghcr.io/tmzt/awning-backend:latest
+    networks:
+      - proxy
+    ports:
+      - "4000:4000"
+
+    volumes:
+      - /srv/apps/awning/backend/config:/app/config:ro
+
+    environment:
+      - ENV=production
+      - APP_PORT=4000
+      - CONFIG_DIR=/app/config
+      - CONFIG_FILE=/app/config/config.yaml
+
+networks:
+  proxy:
+    external: true

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"path"
 	"strings"
 
 	"awning-backend/common"
@@ -54,19 +55,27 @@ func main() {
 		}
 	}
 
-	cfg, err := common.LoadConfig()
+	cfgDir := getEnv("CONFIG_DIR", common.DEFAULT_CONFIG_DIR)
+
+	// Load configuration
+
+	cfg, err := common.LoadConfig(cfgDir)
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
 	}
 
+	promptName := getEnv("PROMPT_NAME", common.DEFAULT_PROMPT_NAME)
+
+	promptFile := path.Join(cfgDir, "prompts", promptName+".template")
+
 	// Load prompt template
-	if _, err := os.Stat(common.PROMPT_TEMPLATE_FILE); os.IsNotExist(err) {
-		slog.Error("Prompt template file does not exist", "file", common.PROMPT_TEMPLATE_FILE)
+	if _, err := os.Stat(promptFile); os.IsNotExist(err) {
+		slog.Error("Prompt template file does not exist", "file", promptFile)
 		os.Exit(1)
 	}
 
-	promptBuilder, err := utils.NewPromptBuilder(common.PROMPT_TEMPLATE_FILE)
+	promptBuilder, err := utils.NewPromptBuilder(promptFile)
 	if err != nil {
 		slog.Error("Failed to load prompt template", "error", err)
 		os.Exit(1)

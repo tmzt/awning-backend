@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path"
 	"strings"
 )
 
@@ -30,13 +31,17 @@ type Config struct {
 	enabledModelsMap     map[string]struct{}
 }
 
-func LoadConfig() (*Config, error) {
+func LoadConfig(dir string) (*Config, error) {
 	cfg := DefaultConfig()
 
 	// Load config (JSON + env overrides)
 	configPath := os.Getenv("CONFIG_FILE")
 	if configPath == "" {
 		configPath = DEFAULT_CONFIG_FILE
+	}
+
+	if !strings.HasPrefix(configPath, "/") && dir != "" {
+		configPath = path.Join(dir, configPath)
 	}
 
 	if _, err := os.Stat(configPath); err == nil {

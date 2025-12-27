@@ -3,8 +3,8 @@ package common
 const (
 	PRIVATE_CREDENTIALS_FILE   = ".private/service_credentials.json"
 	PRIVATE_CREDENTIALS_DOTENV = ".env.private"
-	PROMPT_TEMPLATE_FILE       = ".config/prompt4.template"
-	DEFAULT_CONFIG_FILE        = ".config/config.json"
+	DEFAULT_PROMPT_NAME        = "prompt4"
+	DEFAULT_CONFIG_DIR         = ".config/"
 
 	DEFAULT_MIN_INPUT_TOKENS  = 1
 	DEFAULT_MAX_INPUT_TOKENS  = 200000
