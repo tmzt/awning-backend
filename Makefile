@@ -21,7 +21,23 @@ build:
 	npm run build
 
 deploy:
-	rsync -avvz -e "ssh -p 2022" ../dist/* sanctum-admin@sanctumai.app:/srv/apps/sanctum/app/public/
+	rsync -avvz -e "ssh -p 2022" ../dist/* core-admin@awning.app:/srv/apps/awning/app/static/public/
 
 logs:
 	docker-compose -f docker-compose.beta.yml logs -f
+
+deploy-up:
+	docker-compose -f docker-compose.beta-deploy.yml up -d
+
+deploy-down:
+	docker-compose -f docker-compose.beta-deploy.yml down
+
+deploy-restart:
+	docker-compose -f docker-compose.beta-deploy.yml restart
+
+deploy-logs:
+	docker-compose -f docker-compose.beta-deploy.yml logs -f
+
+deploy-configs:
+	rsync -avvz -L -e "ssh -p 2022" ./.config/config.json core-admin@awning.app:/srv/apps/awning_backend/config/
+	rsync -avvz -L -e "ssh -p 2022" ./.config/prompts core-admin@awning.app:/srv/apps/awning_backend/config/

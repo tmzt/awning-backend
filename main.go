@@ -99,6 +99,13 @@ func main() {
 	var credData []byte
 	if s := getEnv("SERVICE_CREDENTIALS_JSON", ""); s != "" {
 		credData = []byte(s)
+	} else if s := getEnv("SERVICE_CREDENTIALS_FILE", ""); s != "" {
+		data, err := os.ReadFile(s)
+		if err != nil {
+			slog.Error("Failed to read credentials file", "file", s, "error", err)
+			os.Exit(1)
+		}
+		credData = data
 	} else if _, err := os.Stat(common.PRIVATE_CREDENTIALS_FILE); err == nil {
 		data, err := os.ReadFile(common.PRIVATE_CREDENTIALS_FILE)
 		if err != nil {

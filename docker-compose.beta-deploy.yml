@@ -9,7 +9,7 @@ services:
       - "4000:4000"
 
     volumes:
-      - /srv/apps/awning/backend/config:/app/config:ro
+      - /srv/apps/awning_backend/config:/app/config:ro
 
     env_file:
       - .env.production
