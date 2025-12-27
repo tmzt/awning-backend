@@ -15,7 +15,7 @@ services:
       - .env.production
 
     environment:
-      - ENV=production
+      - APP_ENV=production
       - APP_PORT=4000
       - CONFIG_DIR=/app/config
       - CONFIG_FILE=/app/config/config.yaml
