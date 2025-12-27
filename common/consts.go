@@ -5,6 +5,7 @@ const (
 	PRIVATE_CREDENTIALS_DOTENV = ".env.private"
 	DEFAULT_PROMPT_NAME        = "prompt4"
 	DEFAULT_CONFIG_DIR         = ".config/"
+	DEFAULT_CONFIG_FILE        = "config.json"
 
 	DEFAULT_MIN_INPUT_TOKENS  = 1
 	DEFAULT_MAX_INPUT_TOKENS  = 200000
