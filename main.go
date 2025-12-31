@@ -8,9 +8,20 @@ import (
 	"strings"
 
 	"awning-backend/common"
+	"awning-backend/db"
 	"awning-backend/handlers"
 	"awning-backend/middleware"
 	"awning-backend/processors"
+	"awning-backend/sections"
+	"awning-backend/sections/common/auth"
+	"awning-backend/sections/common/users"
+	"awning-backend/sections/models"
+	"awning-backend/sections/tenant/account"
+	"awning-backend/sections/tenant/chat"
+	"awning-backend/sections/tenant/domains"
+	"awning-backend/sections/tenant/filesystem"
+	"awning-backend/sections/tenant/images"
+	"awning-backend/sections/tenant/profile"
 	"awning-backend/services"
 	"awning-backend/storage"
 	"awning-backend/utils"
@@ -20,7 +31,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// VertexClientAdapter adapts the main package VertexOpenAIClient to the handlers.VertexClient interface
+// VertexClientAdapter adapts the main package VertexOpenAIClient to both handlers.VertexClient
+// and sections.VertexClient interfaces
 type VertexClientAdapter struct {
 	client *VertexOpenAIClient
 }
@@ -33,6 +45,25 @@ func (a *VertexClientAdapter) GenerateContentStream(ctx context.Context, prompt 
 			Content: event.Content,
 		})
 	})
+}
+
+// GenerateContentStreamSections adapts to sections.VertexClient interface
+func (a *VertexClientAdapter) GenerateContentStreamSections(ctx context.Context, prompt string, callback func(sections.StreamEvent) error) error {
+	return a.client.GenerateContentStream(ctx, prompt, func(event StreamEvent) error {
+		return callback(sections.StreamEvent{
+			Type:    event.Type,
+			Content: event.Content,
+		})
+	})
+}
+
+// sectionsVertexAdapter wraps VertexClientAdapter to implement sections.VertexClient
+type sectionsVertexAdapter struct {
+	adapter *VertexClientAdapter
+}
+
+func (s *sectionsVertexAdapter) GenerateContentStream(ctx context.Context, prompt string, callback func(sections.StreamEvent) error) error {
+	return s.adapter.GenerateContentStreamSections(ctx, prompt, callback)
 }
 
 func getEnv(key, fallback string) string {
@@ -148,20 +179,64 @@ func main() {
 	}
 	defer redisClient.Close()
 
+	// Initialize database connection (optional - only if DATABASE_URL is set)
+	var database *db.DB
+	databaseURL := getEnv("DATABASE_URL", "")
+	if databaseURL != "" {
+		slog.Info("Connecting to database")
+		database, err = db.Connect(databaseURL)
+		if err != nil {
+			slog.Error("Failed to connect to database", "error", err)
+			os.Exit(1)
+		}
+
+		// Register and migrate shared models
+		if err := database.RegisterModels(ctx,
+			&models.Tenant{},
+			&models.User{},
+			&models.UserTenant{},
+		); err != nil {
+			slog.Error("Failed to register models", "error", err)
+			os.Exit(1)
+		}
+
+		if err := database.MigrateSharedModels(ctx); err != nil {
+			slog.Error("Failed to migrate shared models", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("Database connected and shared models migrated")
+	} else {
+		slog.Info("No DATABASE_URL set - running in legacy mode without PostgreSQL")
+	}
+
+	// Initialize JWT manager (optional - only if JWT_PRIVATE_KEY is set)
+	var jwtManager *auth.JWTManager
+	if jwtPrivateKey := getEnv("JWT_PRIVATE_KEY", ""); jwtPrivateKey != "" {
+		jwtManager, err = auth.NewJWTManagerFromEnv()
+		if err != nil {
+			slog.Error("Failed to initialize JWT manager", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("JWT manager initialized")
+	} else {
+		slog.Info("No JWT_PRIVATE_KEY set - JWT authentication disabled")
+	}
+
 	// Create processors service
 	processorsSvc := services.NewProcessors(cfg)
 
-	// Initialize chat handler with adapter
+	// Initialize chat handler with adapter (legacy handler)
 	vertexAdapter := &VertexClientAdapter{client: GlobalVertexOpenAIClient}
 	chatHandler := handlers.NewChatHandler(cfg, redisClient, promptBuilder, vertexAdapter, processorsSvc)
 
 	var imageHandler *handlers.ImageHandler
+	var unsplashSvc *services.UnsplashService
 
 	// Initialize Unsplash API client (if API key provided)
 	if accessKey, secretKey := cfg.UnsplashAPIAccessKey, cfg.UnsplashAPISecretKey; accessKey != "" && secretKey != "" {
 		slog.Info("Unsplash API keys provided, initializing Unsplash service and image handler")
 
-		unsplashSvc := services.NewUnsplashService(accessKey, secretKey)
+		unsplashSvc = services.NewUnsplashService(accessKey, secretKey)
 
 		// Initialize Unsplash handler
 		imageHandler = handlers.NewImageHandler(cfg, unsplashSvc)
@@ -242,7 +317,64 @@ func main() {
 	// Allow frontend API key for all requests
 	r.Use(middleware.APIFrontendKeyAuthMiddleware(cfg.ApiFrontendKey))
 
-	// API routes - streaming chat only
+	// Initialize new sections-based routes if database is available
+	if database != nil && jwtManager != nil {
+		slog.Info("Initializing multi-tenant sections")
+
+		// Create shared dependencies for new handlers
+		deps := &sections.Dependencies{
+			Config:        cfg,
+			DB:            database,
+			Redis:         redisClient,
+			PromptBuilder: promptBuilder,
+			VertexClient:  &sectionsVertexAdapter{adapter: vertexAdapter},
+			ProcessorsSvc: processorsSvc,
+			UnsplashSvc:   unsplashSvc,
+		}
+
+		// Register user routes (public - no tenant context needed)
+		users.RegisterRoutes(r, deps, jwtManager)
+
+		// Register OAuth routes if configured
+		if cfg.GoogleClientID != "" || cfg.FacebookClientID != "" || cfg.TikTokClientID != "" {
+			oauthConfig := users.NewOAuthConfig(
+				cfg.GoogleClientID, cfg.GoogleClientSecret,
+				cfg.FacebookClientID, cfg.FacebookClientSecret,
+				cfg.TikTokClientID, cfg.TikTokClientSecret,
+				cfg.BaseURL,
+			)
+			users.RegisterOAuthRoutes(r, deps, jwtManager, oauthConfig)
+			slog.Info("OAuth routes registered")
+		}
+
+		// Register tenant-scoped routes
+		// Each RegisterRoutes function creates its own route group with JWT + tenant middleware
+		chat.RegisterRoutes(r, deps, jwtManager)
+		images.RegisterRoutes(r, deps, jwtManager)
+		profile.RegisterRoutes(r, deps, jwtManager)
+		account.RegisterRoutes(r, deps, jwtManager)
+		filesystem.RegisterRoutes(r, deps, jwtManager)
+
+		// Initialize domain registrar and register domain routes
+		registrarFactory := domains.NewRegistrarFactory()
+		registrar, err := registrarFactory.Create(&domains.RegistrarConfig{
+			Provider:  cfg.DomainRegistrarProvider,
+			APIKey:    cfg.DomainRegistrarAPIKey,
+			APISecret: cfg.DomainRegistrarSecret,
+			Username:  cfg.DomainRegistrarUsername,
+			Sandbox:   cfg.DomainRegistrarSandbox,
+		})
+		if err != nil {
+			slog.Warn("Failed to create domain registrar, domain routes will be unavailable", "error", err)
+		} else {
+			domains.RegisterRoutes(r, deps, jwtManager, registrar)
+			slog.Info("Domain routes registered", "provider", cfg.DomainRegistrarProvider)
+		}
+
+		slog.Info("Multi-tenant sections initialized")
+	}
+
+	// Legacy API routes - streaming chat only (backward compatibility)
 	r.POST("/api/v1/chat/stream", chatHandler.CreateChatStream)
 	r.GET("/api/v1/chat/:id", chatHandler.GetChat)
 	r.DELETE("/api/v1/chat/:id", chatHandler.DeleteChat)

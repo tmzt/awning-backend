@@ -44,6 +44,24 @@ type Config struct {
 
 	ApiFrontendKey string `json:"api_frontend_key"`
 
+	// OAuth configuration
+	GoogleClientID       string `json:"google_client_id"`
+	GoogleClientSecret   string `json:"google_client_secret"`
+	FacebookClientID     string `json:"facebook_client_id"`
+	FacebookClientSecret string `json:"facebook_client_secret"`
+	TikTokClientID       string `json:"tiktok_client_id"`
+	TikTokClientSecret   string `json:"tiktok_client_secret"`
+
+	// Domain registrar configuration
+	DomainRegistrarProvider string `json:"domain_registrar_provider"` // namecheap, cloudflare, opensrs, mock
+	DomainRegistrarAPIKey   string `json:"domain_registrar_api_key"`
+	DomainRegistrarSecret   string `json:"domain_registrar_secret"`
+	DomainRegistrarUsername string `json:"domain_registrar_username"`
+	DomainRegistrarSandbox  bool   `json:"domain_registrar_sandbox"`
+
+	// Base URL for OAuth callbacks
+	BaseURL string `json:"base_url"`
+
 	enabledProcessorsMap map[string]struct{}
 	enabledModelsMap     map[string]struct{}
 }
@@ -186,6 +204,48 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("POST_PROCESS_MOCK_RESPONSES"); v != "" {
 		c.PostProcessMockResponses = strings.ToLower(v) == "true" || v == "1"
+	}
+
+	// OAuth configuration
+	if v := os.Getenv("GOOGLE_CLIENT_ID"); v != "" {
+		c.GoogleClientID = v
+	}
+	if v := os.Getenv("GOOGLE_CLIENT_SECRET"); v != "" {
+		c.GoogleClientSecret = v
+	}
+	if v := os.Getenv("FACEBOOK_CLIENT_ID"); v != "" {
+		c.FacebookClientID = v
+	}
+	if v := os.Getenv("FACEBOOK_CLIENT_SECRET"); v != "" {
+		c.FacebookClientSecret = v
+	}
+	if v := os.Getenv("TIKTOK_CLIENT_ID"); v != "" {
+		c.TikTokClientID = v
+	}
+	if v := os.Getenv("TIKTOK_CLIENT_SECRET"); v != "" {
+		c.TikTokClientSecret = v
+	}
+
+	// Domain registrar configuration
+	if v := os.Getenv("DOMAIN_REGISTRAR_PROVIDER"); v != "" {
+		c.DomainRegistrarProvider = v
+	}
+	if v := os.Getenv("DOMAIN_REGISTRAR_API_KEY"); v != "" {
+		c.DomainRegistrarAPIKey = v
+	}
+	if v := os.Getenv("DOMAIN_REGISTRAR_SECRET"); v != "" {
+		c.DomainRegistrarSecret = v
+	}
+	if v := os.Getenv("DOMAIN_REGISTRAR_USERNAME"); v != "" {
+		c.DomainRegistrarUsername = v
+	}
+	if v := os.Getenv("DOMAIN_REGISTRAR_SANDBOX"); v != "" {
+		c.DomainRegistrarSandbox = strings.ToLower(v) == "true" || v == "1"
+	}
+
+	// Base URL
+	if v := os.Getenv("BASE_URL"); v != "" {
+		c.BaseURL = v
 	}
 }
 

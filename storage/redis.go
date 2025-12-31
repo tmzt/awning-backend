@@ -105,3 +105,33 @@ func (r *RedisClient) ListChats(ctx context.Context) ([]string, error) {
 
 	return chatIDs, nil
 }
+
+// Get retrieves a value from Redis by key
+func (r *RedisClient) Get(ctx context.Context, key string) ([]byte, error) {
+	data, err := r.client.Get(ctx, key).Bytes()
+	if err == redis.Nil {
+		return nil, fmt.Errorf("key not found: %s", key)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get key from Redis: %w", err)
+	}
+	return data, nil
+}
+
+// SetWithTTL stores a value in Redis with a TTL
+func (r *RedisClient) SetWithTTL(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	err := r.client.Set(ctx, key, value, ttl).Err()
+	if err != nil {
+		return fmt.Errorf("failed to set key in Redis: %w", err)
+	}
+	return nil
+}
+
+// Delete removes a key from Redis
+func (r *RedisClient) Delete(ctx context.Context, key string) error {
+	err := r.client.Del(ctx, key).Err()
+	if err != nil {
+		return fmt.Errorf("failed to delete key from Redis: %w", err)
+	}
+	return nil
+}
