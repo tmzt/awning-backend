@@ -54,7 +54,9 @@ const (
 	BusinessGoalCustom       BusinessGoal = "custom"
 )
 
-type BusinessType struct {
+type BusinessType string
+
+type BusinessTypeData struct {
 	ID             string         `json:"id"`
 	Label          string         `json:"label"`
 	Category       string         `json:"category"`
@@ -70,15 +72,15 @@ const (
 )
 
 type OnboardingData struct {
-	BusinessName  string                  `json:"businessName"`
-	BusinessType  *BusinessType           `json:"businessType"`
-	Goals         []BusinessGoal          `json:"goals"`
-	CustomGoal    string                  `json:"customGoal,omitempty"`
-	CustomNotes   string                  `json:"customNotes,omitempty"`
-	DomainChoice  *OnboardingDomainChoice `json:"domainChoice,omitempty"`
-	Domain        string                  `json:"domain,omitempty"`
-	SelectedMotif BusinessMotif           `json:"selectedMotif"`
-	Completed     bool                    `json:"completed"`
+	BusinessName     string                  `json:"businessName"`
+	BusinessTypeData *BusinessTypeData       `json:"businessTypeData"`
+	Goals            []BusinessGoal          `json:"goals"`
+	CustomGoal       string                  `json:"customGoal,omitempty"`
+	CustomNotes      string                  `json:"customNotes,omitempty"`
+	DomainChoice     *OnboardingDomainChoice `json:"domainChoice,omitempty"`
+	Domain           string                  `json:"domain,omitempty"`
+	SelectedMotif    BusinessMotif           `json:"selectedMotif"`
+	Completed        bool                    `json:"completed"`
 }
 
 // ToMap returns a map of template keys to string values, supporting explicit nested keys.
@@ -99,12 +101,12 @@ func (o *OnboardingData) ToMap() map[string]string {
 		m["domainChoice"] = ""
 	}
 	// BusinessType nested fields
-	if o.BusinessType != nil {
-		m["businessType.id"] = o.BusinessType.ID
-		m["businessType.label"] = o.BusinessType.Label
-		m["businessType.category"] = o.BusinessType.Category
-		if o.BusinessType.SuggestedMotif != nil {
-			m["businessType.suggestedMotif"] = string(*o.BusinessType.SuggestedMotif)
+	if o.BusinessTypeData != nil {
+		m["businessType.id"] = o.BusinessTypeData.ID
+		m["businessType.label"] = o.BusinessTypeData.Label
+		m["businessType.category"] = o.BusinessTypeData.Category
+		if o.BusinessTypeData.SuggestedMotif != nil {
+			m["businessType.suggestedMotif"] = string(*o.BusinessTypeData.SuggestedMotif)
 		} else {
 			m["businessType.suggestedMotif"] = ""
 		}

@@ -3,69 +3,89 @@ package utils
 import (
 	"awning-backend/model"
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 )
 
 // PromptBuilder handles template-based prompt construction
 type PromptBuilder struct {
-	template string
+	baseTemplate    string
+	requestTemplate string
 }
 
 // NewPromptBuilder creates a new prompt builder from a template file
-func NewPromptBuilder(templatePath string) (*PromptBuilder, error) {
-	data, err := os.ReadFile(templatePath)
+func NewPromptBuilder(baseTemplatePath string, requestTemplatePath string) (*PromptBuilder, error) {
+	baseData, err := os.ReadFile(baseTemplatePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read template file: %w", err)
+		return nil, fmt.Errorf("failed to read base template file: %w", err)
+	}
+
+	requestData, err := os.ReadFile(requestTemplatePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read request template file: %w", err)
 	}
 
 	return &PromptBuilder{
-		template: string(data),
+		baseTemplate:    string(baseData),
+		requestTemplate: string(requestData),
 	}, nil
 }
 
-// Build constructs a prompt by replacing variables in the template
-func (pb *PromptBuilder) Build(onboardingData *model.OnboardingData, extraVariables map[string]string, chatHistory string, userMessage string) string {
-	prompt := pb.template
-
+func (pb *PromptBuilder) replaceValues(template string, onboardingData *model.OnboardingData, extraVariables map[string]string) string {
 	// Convert onboarding data to map
 	onboardingMap := onboardingData.ToMap()
 
 	// Merge onboarding data, extra variables into a single map
 	variables := make(map[string]string)
-	for k, v := range onboardingMap {
-		variables[k] = v
-	}
-	for k, v := range extraVariables {
-		variables[k] = v
-	}
+
+	maps.Copy(variables, onboardingMap)
+	maps.Copy(variables, extraVariables)
 
 	// Replace all variables in the template
 	for key, value := range variables {
 		placeholder := fmt.Sprintf("{{%s}}", key)
-		prompt = strings.ReplaceAll(prompt, placeholder, value)
+		template = strings.ReplaceAll(template, placeholder, value)
 	}
+
+	return template
+}
+
+// Build constructs a prompt by replacing variables in the template
+func (pb *PromptBuilder) Build(onboardingData *model.OnboardingData, extraVariables map[string]string, chatHistory string, userRequestMessage string) string {
+	prompt := ""
 
 	// Append chat context and user message
 	if chatHistory != "" {
 		prompt += fmt.Sprintf("\n\n## Chat History\n\n%s", chatHistory)
 	}
 
-	prompt += fmt.Sprintf("\n\n## Current User Request\n\n%s", userMessage)
+	// fmt.Fprintf(os.Stderr, "Base Template before replacement:\n%s\n", pb.baseTemplate)
+
+	prompt += fmt.Sprintf("\n\n## Base Template\n\n%s", pb.baseTemplate)
+
+	// // Replace variables in the prompt
+	// prompt = pb.replaceValues(prompt, onboardingData, extraVariables)
+
+	requestPrompt := pb.replaceValues(userRequestMessage, onboardingData, extraVariables)
+
+	prompt += fmt.Sprintf("\n\n## Current User Request\n\n%s", requestPrompt)
+
+	// fmt.Fprintf(os.Stderr, "Final Prompt before return:\n%s\n", prompt)
 
 	return prompt
 }
 
-// BuildSimple constructs a simple prompt with just chat history and user message
-func (pb *PromptBuilder) BuildSimple(chatHistory string, userMessage string) string {
-	prompt := pb.template
+// // BuildSimple constructs a simple prompt with just chat history and user message
+// func (pb *PromptBuilder) BuildSimple(chatHistory string, userMessage string) string {
+// 	prompt := pb.requestTemplate
 
-	// Append chat context and user message
-	if chatHistory != "" {
-		prompt += fmt.Sprintf("\n\n## Chat History\n\n%s", chatHistory)
-	}
+// 	// Append chat context and user message
+// 	if chatHistory != "" {
+// 		prompt += fmt.Sprintf("\n\n## Chat History\n\n%s", chatHistory)
+// 	}
 
-	prompt += fmt.Sprintf("\n\n## Current User Request\n\n%s", userMessage)
+// 	prompt += fmt.Sprintf("\n\n## Current User Request\n\n%s", userMessage)
 
-	return prompt
-}
+// 	return prompt
+// }

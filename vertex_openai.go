@@ -82,11 +82,12 @@ type StreamEvent struct {
 
 // VertexOpenAIClient handles API calls to Vertex AI using OpenAI-compatible endpoint
 type VertexOpenAIClient struct {
-	projectID  string
-	endpoint   string
-	httpClient *http.Client
-	tokenSrc   func() (string, error)
-	cfg        *common.Config
+	projectID           string
+	locationEndpoint    string
+	completionsEndpoint string
+	httpClient          *http.Client
+	tokenSrc            func() (string, error)
+	cfg                 *common.Config
 }
 
 // GlobalVertexOpenAIClient is the global instance
@@ -111,14 +112,15 @@ func NewVertexOpenAIClient(ctx context.Context, cfg *common.Config, credData []b
 		return nil, fmt.Errorf("failed to create credentials: %w", err)
 	}
 
+	locationEndpoint := fmt.Sprintf("https://%s/v1/projects/%s/locations/%s", VERTEX_ENDPOINT, cred.ProjectID, VERTEX_REGION)
+
 	// Build endpoint URL
-	endpoint := fmt.Sprintf("https://%s/v1/projects/%s/locations/%s/endpoints/openapi/chat/completions",
-		VERTEX_ENDPOINT, cred.ProjectID, VERTEX_REGION)
+	endpoint := fmt.Sprintf("%s/endpoints/openapi/chat/completions", locationEndpoint)
 
 	client := &VertexOpenAIClient{
-		projectID:  cred.ProjectID,
-		endpoint:   endpoint,
-		httpClient: &http.Client{},
+		projectID:           cred.ProjectID,
+		completionsEndpoint: endpoint,
+		httpClient:          &http.Client{},
 		tokenSrc: func() (string, error) {
 			token, err := creds.TokenSource.Token()
 			if err != nil {
@@ -161,9 +163,9 @@ func (c *VertexOpenAIClient) GenerateContent(ctx context.Context, prompt string)
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	slog.Debug("Calling Vertex AI", "endpoint", c.endpoint, "model", DEFAULT_VERTEX_MODEL)
+	slog.Debug("Calling Vertex AI", "endpoint", c.completionsEndpoint, "model", DEFAULT_VERTEX_MODEL)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.endpoint, bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.completionsEndpoint, bytes.NewReader(jsonBody))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -237,9 +239,9 @@ func (c *VertexOpenAIClient) GenerateContentStream(ctx context.Context, prompt s
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	slog.Debug("Starting streaming request to Vertex AI", "endpoint", c.endpoint, "model", model)
+	slog.Debug("Starting streaming request to Vertex AI", "endpoint", c.completionsEndpoint, "model", model)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.endpoint, bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.completionsEndpoint, bytes.NewReader(jsonBody))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

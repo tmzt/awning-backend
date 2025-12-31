@@ -9,24 +9,35 @@ import (
 	"strings"
 )
 
+type PromptFormat string
+
+const (
+	PromptFormatOneShotPage       PromptFormat = "oneshot"
+	PromptFormatHtmlTemplateBased PromptFormat = "html"
+)
+
 type Config struct {
-	ListenAddr               string   `json:"listen_addr"`
-	MinInputTokens           int      `json:"min_input_tokens"`
-	MaxInputTokens           int      `json:"max_input_tokens"`
-	MaxOutputTokens          int      `json:"max_output_tokens"`
-	RedisAddr                string   `json:"redis_addr"`
-	RedisPassword            string   `json:"redis_password"`
-	RedisPrefix              string   `json:"redis_prefix"`
-	EnabledProcessors        []string `json:"enabled_processors"`
-	EnabledModels            []string `json:"enabled_models"`
-	DefaultModel             string   `json:"default_model"`
-	UnsplashAPIAccessKey     string   `json:"unsplash_api_access_key"`
-	UnsplashAPISecretKey     string   `json:"unsplash_api_secret_key"`
-	MockResponse             bool     `json:"mock_response"`
-	PostProcessMockResponses bool     `json:"post_process_mock_responses"`
-	MockContent              string   `json:"mock_content"`
-	VarDir                   string   `json:"var_dir"`
-	SaveResponses            bool     `json:"save_responses"`
+	ListenAddr               string       `json:"listen_addr"`
+	MinInputTokens           int          `json:"min_input_tokens"`
+	MaxInputTokens           int          `json:"max_input_tokens"`
+	MaxOutputTokens          int          `json:"max_output_tokens"`
+	RedisAddr                string       `json:"redis_addr"`
+	RedisPassword            string       `json:"redis_password"`
+	RedisPrefix              string       `json:"redis_prefix"`
+	EnabledProcessors        []string     `json:"enabled_processors"`
+	EnabledModels            []string     `json:"enabled_models"`
+	DefaultModel             string       `json:"default_model"`
+	PromptFormat             PromptFormat `json:"prompt_format"`
+	PromptName               string       `json:"prompt_name"`
+	UnsplashAPIAccessKey     string       `json:"unsplash_api_access_key"`
+	UnsplashAPISecretKey     string       `json:"unsplash_api_secret_key"`
+	MockResponse             bool         `json:"mock_response"`
+	PostProcessMockResponses bool         `json:"post_process_mock_responses"`
+	MockContent              string       `json:"mock_content"`
+	VarDir                   string       `json:"var_dir"`
+	SaveResponses            bool         `json:"save_responses"`
+
+	SendThinking bool `json:"send_thinking"`
 
 	ApiKey       string `json:"api_key"`
 	ApiKeySecret string `json:"api_key_secret"`
@@ -93,6 +104,8 @@ func DefaultConfig() *Config {
 		ListenAddr:               DEFAULT_LISTEN_ADDR,
 		EnabledModels:            strings.Split(DEFAULT_ENABLED_MODELS, ","),
 		DefaultModel:             DEFAULT_MODEL,
+		PromptFormat:             PromptFormatOneShotPage,
+		PromptName:               "prompt4",
 		UnsplashAPIAccessKey:     "",
 		UnsplashAPISecretKey:     "",
 		MockResponse:             false,
@@ -100,6 +113,7 @@ func DefaultConfig() *Config {
 		MockContent:              "",
 		VarDir:                   DEFAULT_VAR_DIR,
 		SaveResponses:            false,
+		SendThinking:             true,
 	}
 }
 
@@ -143,6 +157,12 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("DEFAULT_MODEL"); v != "" {
 		c.DefaultModel = v
 	}
+	if v := os.Getenv("PROMPT_FORMAT"); v != "" {
+		c.PromptFormat = PromptFormat(v)
+	}
+	if v := os.Getenv("PROMPT_NAME"); v != "" {
+		c.PromptName = v
+	}
 	if v := os.Getenv("UNSPLASH_API_ACCESS_KEY"); v != "" {
 		c.UnsplashAPIAccessKey = v
 	}
@@ -160,6 +180,9 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("SAVE_RESPONSES"); v != "" {
 		c.SaveResponses = strings.ToLower(v) == "true" || v == "1"
+	}
+	if v := os.Getenv("SEND_THINKING"); v != "" {
+		c.SendThinking = strings.ToLower(v) == "true" || v == "1"
 	}
 	if v := os.Getenv("POST_PROCESS_MOCK_RESPONSES"); v != "" {
 		c.PostProcessMockResponses = strings.ToLower(v) == "true" || v == "1"
@@ -206,6 +229,12 @@ func (c *Config) applyConfigOverrides(cfg *Config) {
 	if cfg.DefaultModel != "" {
 		c.DefaultModel = cfg.DefaultModel
 	}
+	if cfg.PromptFormat != "" {
+		c.PromptFormat = cfg.PromptFormat
+	}
+	if cfg.PromptName != "" {
+		c.PromptName = cfg.PromptName
+	}
 	if cfg.UnsplashAPIAccessKey != "" {
 		c.UnsplashAPIAccessKey = cfg.UnsplashAPIAccessKey
 	}
@@ -221,6 +250,7 @@ func (c *Config) applyConfigOverrides(cfg *Config) {
 		c.VarDir = cfg.VarDir
 	}
 	c.SaveResponses = cfg.SaveResponses
+	c.SendThinking = cfg.SendThinking
 }
 
 func (c *Config) updateMaps() {

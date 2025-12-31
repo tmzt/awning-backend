@@ -65,8 +65,39 @@ func NewChatHandler(cfg *common.Config, storage *storage.RedisClient, promptBuil
 type SendSSEEvent func(c *gin.Context, eventType, data string)
 
 func (h *ChatHandler) streamVertexResponse(c *gin.Context, requestCtx context.Context, prompt string, chatID string, chatStage model.ChatStage, fullContent *strings.Builder, sendSSEEvent SendSSEEvent) error {
+
+	// Send start message
+	sendSSEEvent(c, "start", `{"message":"Starting response generation..."}`)
+
+	// Send periodic placeholder event
+	if !h.cfg.SendThinking {
+		tmr := time.NewTicker(10 * time.Second)
+		defer tmr.Stop()
+
+		go func() {
+			for {
+				select {
+				case <-tmr.C:
+					h.logger.Info("Sending periodic thinking event")
+					sendSSEEvent(c, "thinking", `{"message":"still thinking..."}`)
+				case <-requestCtx.Done():
+					return
+				}
+			}
+		}()
+	}
+
 	// Stream response using Vertex AI
 	err := h.vertexClient.GenerateContentStream(requestCtx, prompt, func(event StreamEvent) error {
+		if !h.cfg.SendThinking && event.Type == "thinking" {
+			return nil
+		}
+
+		if event.Type == "content" {
+			fullContent.WriteString(event.Content)
+			return nil
+		}
+
 		// Forward the event to the client
 		eventJSON, _ := json.Marshal(map[string]string{
 			"type":    event.Type,
@@ -74,10 +105,10 @@ func (h *ChatHandler) streamVertexResponse(c *gin.Context, requestCtx context.Co
 		})
 		sendSSEEvent(c, event.Type, string(eventJSON))
 
-		// Collect content for storage
-		if event.Type == "content" {
-			fullContent.WriteString(event.Content)
-		}
+		// // Collect content for storage
+		// if event.Type == "content" {
+		// 	fullContent.WriteString(event.Content)
+		// }
 
 		return nil
 	})
@@ -141,15 +172,23 @@ func (h *ChatHandler) CreateChatStream(c *gin.Context) {
 	// Build prompt
 	chatHistory := chat.GetMessageHistory()
 	var prompt string
-	if len(req.Variables) > 0 {
-		var onboardingData *model.OnboardingData
-		if req.Message.Context != nil && req.Message.Context.OnboardingData != nil {
-			onboardingData = req.Message.Context.OnboardingData
-		}
-		prompt = h.promptBuilder.Build(onboardingData, req.Variables, chatHistory, req.Message.Content)
-	} else {
-		prompt = h.promptBuilder.BuildSimple(chatHistory, req.Message.Content)
+	// if len(req.Variables) > 0 {
+	// 	var onboardingData *model.OnboardingData
+	// 	if req.Message.Context != nil && req.Message.Context.OnboardingData != nil {
+	// 		onboardingData = req.Message.Context.OnboardingData
+	// 	}
+	// 	prompt = h.promptBuilder.Build(onboardingData, req.Variables, chatHistory, req.Message.Content)
+	// } else {
+	// 	prompt = h.promptBuilder.BuildSimple(chatHistory, req.Message.Content)
+	// }
+
+	var onboardingData *model.OnboardingData
+	if req.Message.Context != nil && req.Message.Context.OnboardingData != nil {
+		onboardingData = req.Message.Context.OnboardingData
 	}
+	prompt = h.promptBuilder.Build(onboardingData, req.Variables, chatHistory, req.Message.Content)
+
+	fmt.Fprintf(os.Stderr, "Prompt built:\n======\n%s\n=====\n", prompt)
 
 	// Count tokens using tiktoken
 	enc, err := tokenizer.Get(TOKEN_MODEL)
@@ -198,8 +237,8 @@ func (h *ChatHandler) CreateChatStream(c *gin.Context) {
 			keywords = append(keywords, keyword)
 		}
 
-		if od.BusinessType.Label != "" {
-			keyword := common.SafeString(od.BusinessType.Label)
+		if od.BusinessTypeData.Label != "" {
+			keyword := common.SafeString(od.BusinessTypeData.Label)
 			keywords = append(keywords, keyword)
 		}
 	}

@@ -66,17 +66,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	promptName := getEnv("PROMPT_NAME", common.DEFAULT_PROMPT_NAME)
+	// promptName := getEnv("PROMPT_NAME", common.DEFAULT_PROMPT_NAME)
 
-	promptFile := path.Join(cfgDir, "prompts", promptName+".template")
+	promptName := cfg.PromptName
+	if promptName == "" {
+		promptName = common.DEFAULT_PROMPT_NAME
+	}
+
+	promptType := "oneshot"
+	if cfg.PromptFormat == common.PromptFormatHtmlTemplateBased {
+		promptType = "html"
+	}
+
+	basePromptFile := path.Join(cfgDir, "prompts", promptType, promptName+"-base.md")
+	requestPromptFile := path.Join(cfgDir, "prompts", promptType, promptName+"-request.md")
 
 	// Load prompt template
-	if _, err := os.Stat(promptFile); os.IsNotExist(err) {
-		slog.Error("Prompt template file does not exist", "file", promptFile)
+	if _, err := os.Stat(basePromptFile); os.IsNotExist(err) {
+		slog.Error("Base prompt template file does not exist", "file", basePromptFile)
 		os.Exit(1)
 	}
 
-	promptBuilder, err := utils.NewPromptBuilder(promptFile)
+	if _, err := os.Stat(requestPromptFile); os.IsNotExist(err) {
+		slog.Error("Request prompt template file does not exist", "file", requestPromptFile)
+		os.Exit(1)
+	}
+
+	promptBuilder, err := utils.NewPromptBuilder(basePromptFile, requestPromptFile)
 	if err != nil {
 		slog.Error("Failed to load prompt template", "error", err)
 		os.Exit(1)
