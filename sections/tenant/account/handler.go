@@ -240,7 +240,7 @@ func (h *Handler) toResponse(account *models.TenantAccount) AccountResponse {
 }
 
 // RegisterRoutes registers account-related routes
-func RegisterRoutes(r *gin.Engine, deps *sections.Dependencies, jwtManager *auth.JWTManager) {
+func RegisterRoutes(r *gin.RouterGroup, deps *sections.Dependencies, jwtManager *auth.JWTManager) {
 	handler := NewHandler(deps)
 
 	tenantCfg := auth.DefaultTenantMiddlewareConfig()

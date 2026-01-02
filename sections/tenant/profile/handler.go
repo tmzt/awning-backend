@@ -154,7 +154,7 @@ func (h *Handler) toResponse(profile *models.TenantProfile) ProfileResponse {
 }
 
 // RegisterRoutes registers profile-related routes
-func RegisterRoutes(r *gin.Engine, deps *sections.Dependencies, jwtManager *auth.JWTManager) {
+func RegisterRoutes(r *gin.RouterGroup, deps *sections.Dependencies, jwtManager *auth.JWTManager) {
 	handler := NewHandler(deps)
 
 	tenantCfg := auth.DefaultTenantMiddlewareConfig()

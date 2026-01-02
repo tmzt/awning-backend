@@ -135,3 +135,39 @@ func (r *RedisClient) Delete(ctx context.Context, key string) error {
 	}
 	return nil
 }
+
+// SetSession stores a session token in Redis with a TTL
+func (r *RedisClient) SetSession(ctx context.Context, sessionID string, token string, ttl time.Duration) error {
+	key := fmt.Sprintf("session:%s", sessionID)
+	err := r.client.Set(ctx, key, token, ttl).Err()
+	if err != nil {
+		return fmt.Errorf("failed to set session in Redis: %w", err)
+	}
+	slog.Debug("Session stored in Redis", "session_id", sessionID)
+	return nil
+}
+
+// GetSession retrieves a session token from Redis
+func (r *RedisClient) GetSession(ctx context.Context, sessionID string) (string, error) {
+	key := fmt.Sprintf("session:%s", sessionID)
+	token, err := r.client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return "", fmt.Errorf("session not found: %s", sessionID)
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get session from Redis: %w", err)
+	}
+	slog.Debug("Session retrieved from Redis", "session_id", sessionID)
+	return token, nil
+}
+
+// DeleteSession removes a session from Redis
+func (r *RedisClient) DeleteSession(ctx context.Context, sessionID string) error {
+	key := fmt.Sprintf("session:%s", sessionID)
+	err := r.client.Del(ctx, key).Err()
+	if err != nil {
+		return fmt.Errorf("failed to delete session from Redis: %w", err)
+	}
+	slog.Debug("Session deleted from Redis", "session_id", sessionID)
+	return nil
+}

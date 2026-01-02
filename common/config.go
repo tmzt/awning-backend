@@ -45,12 +45,12 @@ type Config struct {
 	ApiFrontendKey string `json:"api_frontend_key"`
 
 	// OAuth configuration
-	GoogleClientID       string `json:"google_client_id"`
-	GoogleClientSecret   string `json:"google_client_secret"`
-	FacebookClientID     string `json:"facebook_client_id"`
-	FacebookClientSecret string `json:"facebook_client_secret"`
-	TikTokClientID       string `json:"tiktok_client_id"`
-	TikTokClientSecret   string `json:"tiktok_client_secret"`
+	OauthGoogleClientID       string `json:"oauth_google_client_id"`
+	OauthGoogleClientSecret   string `json:"oauth_google_client_secret"`
+	OauthFacebookClientID     string `json:"oauth_facebook_client_id"`
+	OauthFacebookClientSecret string `json:"oauth_facebook_client_secret"`
+	OauthTikTokClientID       string `json:"oauth_tiktok_client_id"`
+	OauthTikTokClientSecret   string `json:"oauth_tiktok_client_secret"`
 
 	// Domain registrar configuration
 	DomainRegistrarProvider string `json:"domain_registrar_provider"` // namecheap, cloudflare, opensrs, mock
@@ -207,23 +207,23 @@ func (c *Config) applyEnvOverrides() {
 	}
 
 	// OAuth configuration
-	if v := os.Getenv("GOOGLE_CLIENT_ID"); v != "" {
-		c.GoogleClientID = v
+	if v := os.Getenv("OAUTH_GOOGLE_CLIENT_ID"); v != "" {
+		c.OauthGoogleClientID = v
 	}
-	if v := os.Getenv("GOOGLE_CLIENT_SECRET"); v != "" {
-		c.GoogleClientSecret = v
+	if v := os.Getenv("OAUTH_GOOGLE_CLIENT_SECRET"); v != "" {
+		c.OauthGoogleClientSecret = v
 	}
-	if v := os.Getenv("FACEBOOK_CLIENT_ID"); v != "" {
-		c.FacebookClientID = v
+	if v := os.Getenv("OAUTH_FACEBOOK_CLIENT_ID"); v != "" {
+		c.OauthFacebookClientID = v
 	}
-	if v := os.Getenv("FACEBOOK_CLIENT_SECRET"); v != "" {
-		c.FacebookClientSecret = v
+	if v := os.Getenv("OAUTH_FACEBOOK_CLIENT_SECRET"); v != "" {
+		c.OauthFacebookClientSecret = v
 	}
-	if v := os.Getenv("TIKTOK_CLIENT_ID"); v != "" {
-		c.TikTokClientID = v
+	if v := os.Getenv("OAUTH_TIKTOK_CLIENT_ID"); v != "" {
+		c.OauthTikTokClientID = v
 	}
-	if v := os.Getenv("TIKTOK_CLIENT_SECRET"); v != "" {
-		c.TikTokClientSecret = v
+	if v := os.Getenv("OAUTH_TIKTOK_CLIENT_SECRET"); v != "" {
+		c.OauthTikTokClientSecret = v
 	}
 
 	// Domain registrar configuration

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"awning-backend/common"
 	"awning-backend/sections"
 	"awning-backend/sections/common/auth"
 	"awning-backend/sections/models"
@@ -46,39 +47,35 @@ func NewOAuthHandler(deps *sections.Dependencies, jwtManager *auth.JWTManager, c
 }
 
 // NewOAuthConfig creates OAuth configurations from config
-func NewOAuthConfig(
-	googleClientID, googleClientSecret,
-	facebookClientID, facebookClientSecret,
-	tiktokClientID, tiktokClientSecret,
-	baseURL string,
-) *OAuthConfig {
+func NewOAuthConfig(config *common.Config) *OAuthConfig {
 	configs := &OAuthConfig{}
 
-	if googleClientID != "" && googleClientSecret != "" {
+	if config.OauthGoogleClientID != "" && config.OauthGoogleClientSecret != "" {
 		configs.Google = &oauth2.Config{
-			ClientID:     googleClientID,
-			ClientSecret: googleClientSecret,
-			RedirectURL:  baseURL + "/api/v1/auth/google/callback",
-			Scopes:       []string{"openid", "email", "profile"},
-			Endpoint:     google.Endpoint,
+			ClientID:     config.OauthGoogleClientID,
+			ClientSecret: config.OauthGoogleClientSecret,
+			// RedirectURL:  config.BaseURL + "/api/v1/auth/google/callback",
+			RedirectURL: config.BaseURL + "/callbacks/oauth/google",
+			Scopes:      []string{"openid", "email", "profile"},
+			Endpoint:    google.Endpoint,
 		}
 	}
 
-	if facebookClientID != "" && facebookClientSecret != "" {
+	if config.OauthFacebookClientID != "" && config.OauthFacebookClientSecret != "" {
 		configs.Facebook = &oauth2.Config{
-			ClientID:     facebookClientID,
-			ClientSecret: facebookClientSecret,
-			RedirectURL:  baseURL + "/api/v1/auth/facebook/callback",
+			ClientID:     config.OauthFacebookClientID,
+			ClientSecret: config.OauthFacebookClientSecret,
+			RedirectURL:  config.BaseURL + "/api/v1/auth/facebook/callback",
 			Scopes:       []string{"email", "public_profile"},
 			Endpoint:     facebook.Endpoint,
 		}
 	}
 
-	if tiktokClientID != "" && tiktokClientSecret != "" {
+	if config.OauthTikTokClientID != "" && config.OauthTikTokClientSecret != "" {
 		configs.TikTok = &oauth2.Config{
-			ClientID:     tiktokClientID,
-			ClientSecret: tiktokClientSecret,
-			RedirectURL:  baseURL + "/api/v1/auth/tiktok/callback",
+			ClientID:     config.OauthTikTokClientID,
+			ClientSecret: config.OauthTikTokClientSecret,
+			RedirectURL:  config.BaseURL + "/api/v1/auth/tiktok/callback",
 			Scopes:       []string{"user.info.basic"},
 			Endpoint: oauth2.Endpoint{
 				AuthURL:  "https://www.tiktok.com/v2/auth/authorize/",
@@ -92,7 +89,10 @@ func NewOAuthConfig(
 
 // GoogleLogin initiates Google OAuth flow
 func (h *OAuthHandler) GoogleLogin(c *gin.Context) {
+	h.logger.Debug("Initiating Google OAuth login")
+
 	if h.configs.Google == nil {
+		h.logger.Error("Google OAuth not configured")
 		c.JSON(http.StatusNotImplemented, gin.H{"error": "Google OAuth not configured"})
 		return
 	}
@@ -102,6 +102,19 @@ func (h *OAuthHandler) GoogleLogin(c *gin.Context) {
 	c.SetCookie("oauth_state", state, 300, "/", "", true, true)
 
 	url := h.configs.Google.AuthCodeURL(state)
+	h.logger.Debug("Redirecting to Google OAuth URL", "url", url)
+
+	acceptJson := c.GetHeader("Accept") == "application/json"
+
+	// For server-to-server flow, return the redirect URI instead of redirecting
+	if c.Query("return_url") == "true" || acceptJson {
+		c.JSON(http.StatusOK, common.ApiResponse[map[string]string]{
+			Data:    map[string]string{"redirectUrl": url},
+			Success: true,
+		})
+		return
+	}
+
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
@@ -157,16 +170,27 @@ func (h *OAuthHandler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	// Redirect to frontend with token (or return JSON based on Accept header)
-	frontendURL := c.Query("redirect_uri")
-	if frontendURL != "" {
-		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"?token="+jwtToken)
+	// Store session in Redis
+	sessionID := generateOAuthState() // Generate unique session ID
+	if err := h.deps.Redis.SetSession(c.Request.Context(), sessionID, jwtToken, 24*time.Hour); err != nil {
+		h.logger.Error("Failed to store session", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store session"})
 		return
 	}
 
-	c.JSON(http.StatusOK, AuthResponse{
-		Token: jwtToken,
-		User:  toUserResponse(user),
+	// Redirect to frontend with token (or return JSON based on Accept header)
+	frontendURL := c.Query("redirect_uri")
+	if frontendURL != "" {
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"?token="+jwtToken+"&session_id="+sessionID)
+		return
+	}
+
+	c.JSON(http.StatusOK, common.ApiResponse[AuthResponse]{
+		Data: AuthResponse{
+			Token: jwtToken,
+			User:  toUserResponse(user),
+		},
+		Success: true,
 	})
 }
 
@@ -253,6 +277,18 @@ func (h *OAuthHandler) FacebookLogin(c *gin.Context) {
 	c.SetCookie("oauth_state", state, 300, "/", "", true, true)
 
 	url := h.configs.Facebook.AuthCodeURL(state)
+
+	acceptJson := c.GetHeader("Accept") == "application/json"
+
+	// For server-to-server flow, return the redirect URI instead of redirecting
+	if c.Query("return_url") == "true" || acceptJson {
+		c.JSON(http.StatusOK, common.ApiResponse[map[string]string]{
+			Data:    map[string]string{"redirectUrl": url},
+			Success: true,
+		})
+		return
+	}
+
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
@@ -304,15 +340,26 @@ func (h *OAuthHandler) FacebookCallback(c *gin.Context) {
 		return
 	}
 
-	frontendURL := c.Query("redirect_uri")
-	if frontendURL != "" {
-		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"?token="+jwtToken)
+	// Store session in Redis
+	sessionID := generateOAuthState() // Generate unique session ID
+	if err := h.deps.Redis.SetSession(c.Request.Context(), sessionID, jwtToken, 24*time.Hour); err != nil {
+		h.logger.Error("Failed to store session", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store session"})
 		return
 	}
 
-	c.JSON(http.StatusOK, AuthResponse{
-		Token: jwtToken,
-		User:  toUserResponse(user),
+	frontendURL := c.Query("redirect_uri")
+	if frontendURL != "" {
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"?token="+jwtToken+"&session_id="+sessionID)
+		return
+	}
+
+	c.JSON(http.StatusOK, common.ApiResponse[AuthResponse]{
+		Data: AuthResponse{
+			Token: jwtToken,
+			User:  toUserResponse(user),
+		},
+		Success: true,
 	})
 }
 
@@ -401,6 +448,18 @@ func (h *OAuthHandler) TikTokLogin(c *gin.Context) {
 		h.configs.TikTok.RedirectURL,
 		state,
 	)
+
+	acceptJson := c.GetHeader("Accept") == "application/json"
+
+	// For server-to-server flow, return the redirect URI instead of redirecting
+	if c.Query("return_url") == "true" || acceptJson {
+		c.JSON(http.StatusOK, common.ApiResponse[map[string]string]{
+			Data:    map[string]string{"redirectUrl": url},
+			Success: true,
+		})
+		return
+	}
+
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
@@ -452,15 +511,26 @@ func (h *OAuthHandler) TikTokCallback(c *gin.Context) {
 		return
 	}
 
-	frontendURL := c.Query("redirect_uri")
-	if frontendURL != "" {
-		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"?token="+jwtToken)
+	// Store session in Redis
+	sessionID := generateOAuthState() // Generate unique session ID
+	if err := h.deps.Redis.SetSession(c.Request.Context(), sessionID, jwtToken, 24*time.Hour); err != nil {
+		h.logger.Error("Failed to store session", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store session"})
 		return
 	}
 
-	c.JSON(http.StatusOK, AuthResponse{
-		Token: jwtToken,
-		User:  toUserResponse(user),
+	frontendURL := c.Query("redirect_uri")
+	if frontendURL != "" {
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"?token="+jwtToken+"&session_id="+sessionID)
+		return
+	}
+
+	c.JSON(http.StatusOK, common.ApiResponse[AuthResponse]{
+		Data: AuthResponse{
+			Token: jwtToken,
+			User:  toUserResponse(user),
+		},
+		Success: true,
 	})
 }
 
@@ -546,14 +616,14 @@ func toUserResponse(user *models.User) UserResponse {
 }
 
 // RegisterOAuthRoutes registers OAuth-related routes
-func RegisterOAuthRoutes(r *gin.Engine, deps *sections.Dependencies, jwtManager *auth.JWTManager, configs *OAuthConfig) {
+func RegisterOAuthRoutes(frontendRoutes *gin.RouterGroup, callbackRoutes *gin.RouterGroup, deps *sections.Dependencies, jwtManager *auth.JWTManager, configs *OAuthConfig) {
 	if configs == nil {
 		return
 	}
 
 	handler := NewOAuthHandler(deps, jwtManager, configs)
 
-	oauth := r.Group("/api/v1/auth")
+	oauth := frontendRoutes.Group("/api/v1/auth")
 	{
 		if configs.Google != nil {
 			oauth.GET("/google", handler.GoogleLogin)
@@ -568,4 +638,18 @@ func RegisterOAuthRoutes(r *gin.Engine, deps *sections.Dependencies, jwtManager 
 			oauth.GET("/tiktok/callback", handler.TikTokCallback)
 		}
 	}
+
+	// oauthCallbacks := callbackRoutes.Group("/oauth")
+	// {
+	// 	if configs.Google != nil {
+	// 		slog.Debug("Registering Google OAuth callback route")
+	// 		oauthCallbacks.GET("/google", handler.GoogleCallback)
+	// 	}
+	// 	if configs.Facebook != nil {
+	// 		oauthCallbacks.GET("/facebook", handler.FacebookCallback)
+	// 	}
+	// 	if configs.TikTok != nil {
+	// 		oauthCallbacks.GET("/tiktok", handler.TikTokCallback)
+	// 	}
+	// }
 }

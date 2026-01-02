@@ -2,6 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	cryptoRand "crypto/rand"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
 	"log/slog"
 	"os"
 	"path"
@@ -76,6 +82,56 @@ func getEnv(key, fallback string) string {
 func main() {
 	ctx := context.Background()
 
+	// If called with geneckey argument, generate a keypair and exit
+	if len(os.Args) == 2 && os.Args[1] == "geneckey" {
+		// privateKey, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+		// if err != nil {
+		// 	slog.Error("Failed to generate key pair", "error", err)
+		// 	os.Exit(1)
+		// }
+		// slog.Info("Generated JWT key pair")
+		// // slog.Info("Private Key (base64):", "key", auth.EncodePrivateKeyToBase64(privateKey))
+		// // slog.Info("Public Key (base64):", "key", auth.EncodePublicKeyToBase64(publicKey))
+		// slog.Info("Private Key (PEM):", "key", auth.EncodePrivateKeyToPEM(privateKey))
+		// os.Exit(0)
+
+		// Generate ECDSA P-521 key pair
+		privateKey, err := ecdsa.GenerateKey(elliptic.P521(), cryptoRand.Reader)
+		if err != nil {
+			slog.Error("Failed to generate ECDSA key pair", "error", err)
+			os.Exit(1)
+		}
+		publicKey := &privateKey.PublicKey
+
+		// Encode keys to PEM format
+		privBytes, err := x509.MarshalECPrivateKey(privateKey)
+		if err != nil {
+			slog.Error("Failed to marshal private key", "error", err)
+			os.Exit(1)
+		}
+		privPem := pem.EncodeToMemory(&pem.Block{
+			Type:  "EC PRIVATE KEY",
+			Bytes: privBytes,
+		})
+		privB64 := base64.StdEncoding.EncodeToString(privPem)
+
+		pubBytes, err := x509.MarshalPKIXPublicKey(publicKey)
+		if err != nil {
+			slog.Error("Failed to marshal public key", "error", err)
+			os.Exit(1)
+		}
+		pubPem := pem.EncodeToMemory(&pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: pubBytes,
+		})
+		pubB64 := base64.StdEncoding.EncodeToString(pubPem)
+
+		slog.Info("Generated ECDSA P-521 key pair")
+		slog.Info("Private Key (BASE64'd PEM):\n" + privB64)
+		slog.Info("Public Key (BASE64'd PEM):\n" + pubB64)
+		os.Exit(0)
+	}
+
 	// Set up structured logging with debug level
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
@@ -96,6 +152,8 @@ func main() {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
 	}
+
+	slog.Info("cfg: ", slog.Any("config", cfg))
 
 	// promptName := getEnv("PROMPT_NAME", common.DEFAULT_PROMPT_NAME)
 
@@ -227,9 +285,9 @@ func main() {
 
 	// Initialize chat handler with adapter (legacy handler)
 	vertexAdapter := &VertexClientAdapter{client: GlobalVertexOpenAIClient}
-	chatHandler := handlers.NewChatHandler(cfg, redisClient, promptBuilder, vertexAdapter, processorsSvc)
+	// chatHandler := handlers.NewChatHandler(cfg, redisClient, promptBuilder, vertexAdapter, processorsSvc)
 
-	var imageHandler *handlers.ImageHandler
+	// var imageHandler *handlers.ImageHandler
 	var unsplashSvc *services.UnsplashService
 
 	// Initialize Unsplash API client (if API key provided)
@@ -239,7 +297,7 @@ func main() {
 		unsplashSvc = services.NewUnsplashService(accessKey, secretKey)
 
 		// Initialize Unsplash handler
-		imageHandler = handlers.NewImageHandler(cfg, unsplashSvc)
+		// imageHandler = handlers.NewImageHandler(cfg, unsplashSvc)
 
 		// Register header processor
 		processorsSvc.RegisterProcessor("header", processors.NewHeaderProcessor(cfg))
@@ -315,7 +373,15 @@ func main() {
 	// }))
 
 	// Allow frontend API key for all requests
-	r.Use(middleware.APIFrontendKeyAuthMiddleware(cfg.ApiFrontendKey))
+	// r.Use(middleware.APIFrontendKeyAuthMiddleware(cfg.ApiFrontendKey))
+
+	frontendRoutes := r.Group("/")
+	frontendRoutes.Use(middleware.APIFrontendKeyAuthMiddleware(cfg.ApiFrontendKey))
+
+	callbackRoutes := r.Group("/callbacks")
+
+	slog.Info("Database: ", slog.Any("database", database))
+	slog.Info("JWT Manager: ", slog.Any("jwt_manager", jwtManager))
 
 	// Initialize new sections-based routes if database is available
 	if database != nil && jwtManager != nil {
@@ -333,27 +399,23 @@ func main() {
 		}
 
 		// Register user routes (public - no tenant context needed)
-		users.RegisterRoutes(r, deps, jwtManager)
+		users.RegisterRoutes(frontendRoutes, deps, jwtManager)
 
 		// Register OAuth routes if configured
-		if cfg.GoogleClientID != "" || cfg.FacebookClientID != "" || cfg.TikTokClientID != "" {
-			oauthConfig := users.NewOAuthConfig(
-				cfg.GoogleClientID, cfg.GoogleClientSecret,
-				cfg.FacebookClientID, cfg.FacebookClientSecret,
-				cfg.TikTokClientID, cfg.TikTokClientSecret,
-				cfg.BaseURL,
-			)
-			users.RegisterOAuthRoutes(r, deps, jwtManager, oauthConfig)
+		if cfg.OauthGoogleClientID != "" || cfg.OauthFacebookClientID != "" || cfg.OauthTikTokClientID != "" {
+			slog.Info("OAuth client IDs provided, registering OAuth routes")
+			oauthConfig := users.NewOAuthConfig(cfg)
+			users.RegisterOAuthRoutes(frontendRoutes, callbackRoutes, deps, jwtManager, oauthConfig)
 			slog.Info("OAuth routes registered")
 		}
 
 		// Register tenant-scoped routes
 		// Each RegisterRoutes function creates its own route group with JWT + tenant middleware
-		chat.RegisterRoutes(r, deps, jwtManager)
-		images.RegisterRoutes(r, deps, jwtManager)
-		profile.RegisterRoutes(r, deps, jwtManager)
-		account.RegisterRoutes(r, deps, jwtManager)
-		filesystem.RegisterRoutes(r, deps, jwtManager)
+		chat.RegisterRoutes(frontendRoutes, deps, jwtManager)
+		images.RegisterRoutes(frontendRoutes, deps, jwtManager)
+		profile.RegisterRoutes(frontendRoutes, deps, jwtManager)
+		account.RegisterRoutes(frontendRoutes, deps, jwtManager)
+		filesystem.RegisterRoutes(frontendRoutes, deps, jwtManager)
 
 		// Initialize domain registrar and register domain routes
 		registrarFactory := domains.NewRegistrarFactory()
@@ -375,15 +437,15 @@ func main() {
 	}
 
 	// Legacy API routes - streaming chat only (backward compatibility)
-	r.POST("/api/v1/chat/stream", chatHandler.CreateChatStream)
-	r.GET("/api/v1/chat/:id", chatHandler.GetChat)
-	r.DELETE("/api/v1/chat/:id", chatHandler.DeleteChat)
+	// r.POST("/api/v1/chat/stream", chatHandler.CreateChatStream)
+	// r.GET("/api/v1/chat/:id", chatHandler.GetChat)
+	// r.DELETE("/api/v1/chat/:id", chatHandler.DeleteChat)
 
 	// Image API routes
-	if imageHandler != nil {
-		r.GET("/api/v1/images/search", imageHandler.SearchPhotos)
-		r.GET("/api/v1/images/photos/:id", imageHandler.GetPhoto)
-	}
+	// if imageHandler != nil {
+	// 	r.GET("/api/v1/images/search", imageHandler.SearchPhotos)
+	// 	r.GET("/api/v1/images/photos/:id", imageHandler.GetPhoto)
+	// }
 
 	// Serve static files from APP_PUBLIC if set
 	if publicDir := os.Getenv("APP_PUBLIC"); publicDir != "" {
@@ -397,8 +459,11 @@ func main() {
 				c.File(publicDir + "/index.html")
 			}
 		})
+	} else if publicProxy := os.Getenv("APP_PUBLIC_PROXY"); publicProxy != "" {
+		slog.Info("Serving static files via proxy", "proxy", publicProxy)
+		r.Use(middleware.StaticProxyMiddleware(publicProxy))
 	} else {
-		slog.Info("No static file directory set (APP_PUBLIC not defined)")
+		slog.Info("No static file directory set (APP_PUBLIC not defined) and no proxy set (APP_PUBLIC_PROXY not defined)")
 	}
 
 	slog.Info("Server starting", "addr", cfg.ListenAddr)

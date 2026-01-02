@@ -91,7 +91,7 @@ func (h *Handler) GetPhoto(c *gin.Context) {
 }
 
 // RegisterRoutes registers image-related routes
-func RegisterRoutes(r *gin.Engine, deps *sections.Dependencies, jwtManager *auth.JWTManager) {
+func RegisterRoutes(r *gin.RouterGroup, deps *sections.Dependencies, jwtManager *auth.JWTManager) {
 	if deps.UnsplashSvc == nil {
 		slog.Info("Skipping image routes - Unsplash service not configured")
 		return

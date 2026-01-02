@@ -308,7 +308,7 @@ func (h *Handler) toResponse(entry *models.TenantFilesystem) FilesystemEntry {
 }
 
 // RegisterRoutes registers filesystem-related routes
-func RegisterRoutes(r *gin.Engine, deps *sections.Dependencies, jwtManager *auth.JWTManager) {
+func RegisterRoutes(r *gin.RouterGroup, deps *sections.Dependencies, jwtManager *auth.JWTManager) {
 	handler := NewHandler(deps)
 
 	tenantCfg := auth.DefaultTenantMiddlewareConfig()

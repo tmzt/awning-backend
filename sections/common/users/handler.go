@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"awning-backend/common"
 	"awning-backend/sections"
 	"awning-backend/sections/common/auth"
 	"awning-backend/sections/models"
@@ -189,9 +190,14 @@ func (h *Handler) Login(c *gin.Context) {
 
 	h.logger.Info("User logged in", "userId", user.ID, "email", user.Email)
 
-	c.JSON(http.StatusOK, AuthResponse{
+	response := AuthResponse{
 		Token: token,
 		User:  h.toUserResponse(&user),
+	}
+
+	c.JSON(http.StatusOK, common.ApiResponse[AuthResponse]{
+		Success: true,
+		Data:    response,
 	})
 }
 
@@ -230,7 +236,12 @@ func (h *Handler) RequestPasswordReset(c *gin.Context) {
 	// TODO: Send email with reset link
 	h.logger.Info("Password reset requested", "userId", user.ID, "email", user.Email)
 
-	c.JSON(http.StatusOK, gin.H{"message": "if an account exists with this email, a reset link will be sent"})
+	// c.JSON(http.StatusOK, gin.H{"message": "if an account exists with this email, a reset link will be sent"})
+	response := common.ApiResponse[any]{
+		Success: true,
+		Message: "if an account exists with this email, a reset link will be sent",
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // ConfirmPasswordReset completes a password reset
@@ -271,7 +282,13 @@ func (h *Handler) ConfirmPasswordReset(c *gin.Context) {
 
 	h.logger.Info("Password reset completed", "userId", user.ID)
 
-	c.JSON(http.StatusOK, gin.H{"message": "password has been reset successfully"})
+	// c.JSON(http.StatusOK, gin.H{"message": "password has been reset successfully"})
+
+	response := common.ApiResponse[any]{
+		Success: true,
+		Message: "password has been reset successfully",
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // GetProfile returns the current user's profile
@@ -288,7 +305,12 @@ func (h *Handler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, h.toUserResponse(&user))
+	// c.JSON(http.StatusOK, h.toUserResponse(&user))
+	response := common.ApiResponse[UserResponse]{
+		Success: true,
+		Data:    h.toUserResponse(&user),
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // UpdateProfile updates the current user's profile
@@ -318,7 +340,11 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 	user.LastName = req.LastName
 	h.deps.DB.DB.Save(&user)
 
-	c.JSON(http.StatusOK, h.toUserResponse(&user))
+	response := common.ApiResponse[UserResponse]{
+		Success: true,
+		Data:    h.toUserResponse(&user),
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // GetTenants returns the tenants the user belongs to
@@ -355,7 +381,11 @@ func (h *Handler) GetTenants(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"tenants": tenants})
+	response := common.ApiResponse[[]TenantResponse]{
+		Success: true,
+		Data:    tenants,
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *Handler) toUserResponse(user *models.User) UserResponse {
@@ -370,7 +400,7 @@ func (h *Handler) toUserResponse(user *models.User) UserResponse {
 }
 
 // RegisterRoutes registers all user-related routes
-func RegisterRoutes(r *gin.Engine, deps *sections.Dependencies, jwtManager *auth.JWTManager) {
+func RegisterRoutes(r *gin.RouterGroup, deps *sections.Dependencies, jwtManager *auth.JWTManager) {
 	handler := NewHandler(deps, jwtManager)
 
 	// Public routes (no auth required)

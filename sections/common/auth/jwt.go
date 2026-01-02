@@ -3,9 +3,11 @@ package auth
 import (
 	"crypto/ecdsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -44,25 +46,35 @@ func NewJWTManager(privateKeyPEM string, issuer string, expiryHours int) (*JWTMa
 		return nil, errors.New("JWT_PRIVATE_KEY environment variable is required")
 	}
 
+	slog.Info("Decoding JWT private key: ", slog.String("key", privateKeyPEM))
+
 	// Parse PEM block
 	block, _ := pem.Decode([]byte(privateKeyPEM))
 	if block == nil {
 		return nil, errors.New("failed to parse PEM block from private key")
 	}
 
-	// Parse private key
-	privateKey, err := x509.ParseECPrivateKey(block.Bytes)
+	// privateKeyBytes := []byte(privateKeyPEM)
+	privateKeyBytes := block.Bytes
+
+	// // Parse private key
+	// privateKey, err := x509.ParseECPrivateKey(privateKeyBytes)
+	// if err != nil {
+	// 	// Try PKCS8 format
+	// 	key, err := x509.ParsePKCS8PrivateKey(privateKeyBytes)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	// 	}
+	// 	var ok bool
+	// 	privateKey, ok = key.(*ecdsa.PrivateKey)
+	// 	if !ok {
+	// 		return nil, errors.New("key is not an ECDSA private key")
+	// 	}
+	// }
+
+	privateKey, err := x509.ParseECPrivateKey(privateKeyBytes)
 	if err != nil {
-		// Try PKCS8 format
-		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse private key: %w", err)
-		}
-		var ok bool
-		privateKey, ok = key.(*ecdsa.PrivateKey)
-		if !ok {
-			return nil, errors.New("key is not an ECDSA private key")
-		}
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
 	return &JWTManager{
@@ -90,7 +102,11 @@ func (j *JWTManager) GenerateToken(userID uint, email string, tenantSchema strin
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodES512, claims)
-	return token.SignedString(j.privateKey)
+	res, err := token.SignedString(j.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %w", err)
+	}
+	return res, nil
 }
 
 // ValidateToken parses and validates a JWT token
@@ -135,6 +151,7 @@ func JWTAuthMiddleware(jwtManager *JWTManager) gin.HandlerFunc {
 		// Extract Bearer token
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			slog.Warn("Invalid authorization header format")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
 			c.Abort()
 			return
@@ -143,6 +160,7 @@ func JWTAuthMiddleware(jwtManager *JWTManager) gin.HandlerFunc {
 		tokenString := parts[1]
 		claims, err := jwtManager.ValidateToken(tokenString)
 		if err != nil {
+			slog.Warn("JWT validation failed", "error", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
 			return
@@ -218,10 +236,15 @@ func GetTenantSchemaFromContext(c *gin.Context) (string, bool) {
 
 // NewJWTManagerFromEnv creates a JWTManager from environment variables
 func NewJWTManagerFromEnv() (*JWTManager, error) {
-	privateKey := os.Getenv("JWT_PRIVATE_KEY")
+	privateKeyStr := os.Getenv("JWT_PRIVATE_KEY")
+	privateKey, err := base64.StdEncoding.DecodeString(privateKeyStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JWT private key from base64: %w", err)
+	}
+
 	issuer := os.Getenv("JWT_ISSUER")
 	if issuer == "" {
 		issuer = "awning-backend"
 	}
-	return NewJWTManager(privateKey, issuer, 24) // 24 hour expiry
+	return NewJWTManager(string(privateKey), issuer, 24) // 24 hour expiry
 }
