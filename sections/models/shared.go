@@ -61,11 +61,12 @@ func (User) IsSharedModel() bool {
 // UserTenant links users to tenants (public/shared model)
 type UserTenant struct {
 	gorm.Model
-	UserID       uint   `gorm:"not null;index" json:"userId"`
-	TenantSchema string `gorm:"size:63;not null;index" json:"tenantSchema"`
-	Role         string `gorm:"size:50;default:'member'" json:"role"` // owner, admin, member
-	User         User   `gorm:"foreignKey:UserID" json:"-"`
-	Tenant       Tenant `gorm:"foreignKey:TenantSchema;references:SchemaName" json:"-"`
+	UserID        uint   `gorm:"not null;index" json:"userId"`
+	TenantSchema  string `gorm:"size:63;not null;index" json:"tenantSchema"`
+	Role          string `gorm:"size:50;default:'member'" json:"role"` // owner, admin, member
+	PrimaryTenant bool   `gorm:"default:false;index" json:"primaryTenant"`
+	User          User   `gorm:"foreignKey:UserID" json:"-"`
+	Tenant        Tenant `gorm:"foreignKey:TenantSchema;references:SchemaName" json:"-"`
 }
 
 // TableName returns the table name with public schema prefix

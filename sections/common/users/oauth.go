@@ -1,6 +1,7 @@
 package users
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -30,19 +31,21 @@ type OAuthConfig struct {
 
 // OAuthHandler handles OAuth authentication
 type OAuthHandler struct {
-	logger     *slog.Logger
-	deps       *sections.Dependencies
-	jwtManager *auth.JWTManager
-	configs    *OAuthConfig
+	logger      *slog.Logger
+	deps        *sections.Dependencies
+	jwtManager  *auth.JWTManager
+	configs     *OAuthConfig
+	userService *UserService
 }
 
 // NewOAuthHandler creates a new OAuth handler
 func NewOAuthHandler(deps *sections.Dependencies, jwtManager *auth.JWTManager, configs *OAuthConfig) *OAuthHandler {
 	return &OAuthHandler{
-		logger:     slog.With("handler", "OAuthHandler"),
-		deps:       deps,
-		jwtManager: jwtManager,
-		configs:    configs,
+		logger:      slog.With("handler", "OAuthHandler"),
+		deps:        deps,
+		jwtManager:  jwtManager,
+		configs:     configs,
+		userService: NewUserService(deps),
 	}
 }
 
@@ -155,15 +158,23 @@ func (h *OAuthHandler) GoogleCallback(c *gin.Context) {
 	}
 
 	// Find or create user
-	user, err := h.findOrCreateGoogleUser(userInfo)
+	user, err := h.findOrCreateGoogleUser(c.Request.Context(), userInfo)
 	if err != nil {
 		h.logger.Error("Failed to find or create user", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to authenticate"})
 		return
 	}
 
+	// Get primary tenant schema
+	tenantSchema, err := h.userService.GetPrimaryTenantSchema(c.Request.Context(), user.ID)
+	if err != nil {
+		h.logger.Error("Failed to get primary tenant", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tenant"})
+		return
+	}
+
 	// Generate JWT
-	jwtToken, err := h.jwtManager.GenerateToken(user.ID, user.Email, "")
+	jwtToken, err := h.jwtManager.GenerateToken(user.ID, user.Email, tenantSchema)
 	if err != nil {
 		h.logger.Error("Failed to generate token", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
@@ -224,31 +235,11 @@ func (h *OAuthHandler) getGoogleUserInfo(accessToken string) (*googleUserInfo, e
 	return &userInfo, nil
 }
 
-func (h *OAuthHandler) findOrCreateGoogleUser(info *googleUserInfo) (*models.User, error) {
-	var user models.User
-
-	// Try to find by Google ID
-	if err := h.deps.DB.DB.Where("google_id = ?", info.ID).First(&user).Error; err == nil {
-		// Update last login
-		now := time.Now()
-		h.deps.DB.DB.Model(&user).Update("last_login_at", now)
-		return &user, nil
-	}
-
-	// Try to find by email
-	if err := h.deps.DB.DB.Where("email = ?", info.Email).First(&user).Error; err == nil {
-		// Link Google account
-		h.deps.DB.DB.Model(&user).Updates(map[string]interface{}{
-			"google_id":     info.ID,
-			"last_login_at": time.Now(),
-		})
-		return &user, nil
-	}
-
-	// Create new user
-	googleID := info.ID
+func (h *OAuthHandler) findOrCreateGoogleUser(ctx context.Context, info *googleUserInfo) (*models.User, error) {
 	now := time.Now()
-	user = models.User{
+	googleID := info.ID
+
+	user := models.User{
 		Email:           info.Email,
 		FirstName:       info.GivenName,
 		LastName:        info.FamilyName,
@@ -259,11 +250,7 @@ func (h *OAuthHandler) findOrCreateGoogleUser(info *googleUserInfo) (*models.Use
 		Active:          true,
 	}
 
-	if err := h.deps.DB.DB.Create(&user).Error; err != nil {
-		return nil, err
-	}
-
-	return &user, nil
+	return h.userService.FindOrCreateUserWithOAuth(ctx, user, "google", info.ID)
 }
 
 // FacebookLogin initiates Facebook OAuth flow
@@ -326,14 +313,22 @@ func (h *OAuthHandler) FacebookCallback(c *gin.Context) {
 		return
 	}
 
-	user, err := h.findOrCreateFacebookUser(userInfo)
+	user, err := h.findOrCreateFacebookUser(c.Request.Context(), userInfo)
 	if err != nil {
 		h.logger.Error("Failed to find or create user", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to authenticate"})
 		return
 	}
 
-	jwtToken, err := h.jwtManager.GenerateToken(user.ID, user.Email, "")
+	// Get primary tenant schema
+	tenantSchema, err := h.userService.GetPrimaryTenantSchema(c.Request.Context(), user.ID)
+	if err != nil {
+		h.logger.Error("Failed to get primary tenant", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tenant"})
+		return
+	}
+
+	jwtToken, err := h.jwtManager.GenerateToken(user.ID, user.Email, tenantSchema)
 	if err != nil {
 		h.logger.Error("Failed to generate token", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
@@ -395,26 +390,10 @@ func (h *OAuthHandler) getFacebookUserInfo(accessToken string) (*facebookUserInf
 	return &userInfo, nil
 }
 
-func (h *OAuthHandler) findOrCreateFacebookUser(info *facebookUserInfo) (*models.User, error) {
-	var user models.User
-
-	if err := h.deps.DB.DB.Where("facebook_id = ?", info.ID).First(&user).Error; err == nil {
-		now := time.Now()
-		h.deps.DB.DB.Model(&user).Update("last_login_at", now)
-		return &user, nil
-	}
-
-	if err := h.deps.DB.DB.Where("email = ?", info.Email).First(&user).Error; err == nil {
-		h.deps.DB.DB.Model(&user).Updates(map[string]interface{}{
-			"facebook_id":   info.ID,
-			"last_login_at": time.Now(),
-		})
-		return &user, nil
-	}
-
+func (h *OAuthHandler) findOrCreateFacebookUser(ctx context.Context, info *facebookUserInfo) (*models.User, error) {
 	facebookID := info.ID
 	now := time.Now()
-	user = models.User{
+	user := models.User{
 		Email:       info.Email,
 		FirstName:   info.FirstName,
 		LastName:    info.LastName,
@@ -423,11 +402,7 @@ func (h *OAuthHandler) findOrCreateFacebookUser(info *facebookUserInfo) (*models
 		Active:      true,
 	}
 
-	if err := h.deps.DB.DB.Create(&user).Error; err != nil {
-		return nil, err
-	}
-
-	return &user, nil
+	return h.userService.FindOrCreateUserWithOAuth(ctx, user, "facebook", info.ID)
 }
 
 // TikTokLogin initiates TikTok OAuth flow
@@ -497,14 +472,22 @@ func (h *OAuthHandler) TikTokCallback(c *gin.Context) {
 		return
 	}
 
-	user, err := h.findOrCreateTikTokUser(userInfo)
+	user, err := h.findOrCreateTikTokUser(c.Request.Context(), userInfo)
 	if err != nil {
 		h.logger.Error("Failed to find or create user", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to authenticate"})
 		return
 	}
 
-	jwtToken, err := h.jwtManager.GenerateToken(user.ID, user.Email, "")
+	// Get primary tenant schema
+	tenantSchema, err := h.userService.GetPrimaryTenantSchema(c.Request.Context(), user.ID)
+	if err != nil {
+		h.logger.Error("Failed to get primary tenant", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tenant"})
+		return
+	}
+
+	jwtToken, err := h.jwtManager.GenerateToken(user.ID, user.Email, tenantSchema)
 	if err != nil {
 		h.logger.Error("Failed to generate token", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
@@ -570,20 +553,12 @@ func (h *OAuthHandler) getTikTokUserInfo(accessToken string) (*tiktokUserInfo, e
 	return &response.Data.User, nil
 }
 
-func (h *OAuthHandler) findOrCreateTikTokUser(info *tiktokUserInfo) (*models.User, error) {
-	var user models.User
-
-	if err := h.deps.DB.DB.Where("tiktok_id = ?", info.OpenID).First(&user).Error; err == nil {
-		now := time.Now()
-		h.deps.DB.DB.Model(&user).Update("last_login_at", now)
-		return &user, nil
-	}
-
+func (h *OAuthHandler) findOrCreateTikTokUser(ctx context.Context, info *tiktokUserInfo) (*models.User, error) {
 	// TikTok doesn't provide email, so we need to handle this differently
 	// Generate a placeholder email or require user to provide one later
 	tiktokID := info.OpenID
 	now := time.Now()
-	user = models.User{
+	user := models.User{
 		Email:       fmt.Sprintf("tiktok_%s@placeholder.local", info.OpenID),
 		FirstName:   info.DisplayName,
 		TikTokID:    &tiktokID,
@@ -591,11 +566,7 @@ func (h *OAuthHandler) findOrCreateTikTokUser(info *tiktokUserInfo) (*models.Use
 		Active:      true,
 	}
 
-	if err := h.deps.DB.DB.Create(&user).Error; err != nil {
-		return nil, err
-	}
-
-	return &user, nil
+	return h.userService.FindOrCreateUserWithOAuth(ctx, user, "tiktok", info.OpenID)
 }
 
 func generateOAuthState() string {

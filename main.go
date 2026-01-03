@@ -262,6 +262,11 @@ func main() {
 			&models.UserTenant{},
 			&models.Payment{},
 			&models.Subscription{},
+			// Tenant models
+			&models.TenantFilesystem{},
+			&models.TenantChat{},
+			&models.TenantProfile{},
+			&models.TenantDomain{},
 		); err != nil {
 			slog.Error("Failed to register models", "error", err)
 			os.Exit(1)
@@ -384,10 +389,15 @@ func main() {
 	// Allow frontend API key for all requests
 	// r.Use(middleware.APIFrontendKeyAuthMiddleware(cfg.ApiFrontendKey))
 
+	// publicRoutes := r.Group("/")
+
 	frontendRoutes := r.Group("/")
 	frontendRoutes.Use(middleware.APIFrontendKeyAuthMiddleware(cfg.ApiFrontendKey))
-	frontendRoutes.Use(auth.JWTAuthMiddleware(jwtManager))
-	frontendRoutes.Use(auth.TenantFromHeaderMiddleware(auth.DefaultTenantMiddlewareConfig()))
+
+	privateRoutes := r.Group("/")
+	privateRoutes.Use(middleware.APIFrontendKeyAuthMiddleware(cfg.ApiFrontendKey))
+	privateRoutes.Use(auth.JWTAuthMiddleware(jwtManager))
+	privateRoutes.Use(auth.TenantFromHeaderMiddleware(auth.DefaultTenantMiddlewareConfig()))
 
 	callbackRoutes := r.Group("/callbacks")
 

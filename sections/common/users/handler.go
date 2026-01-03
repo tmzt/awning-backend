@@ -27,17 +27,19 @@ var (
 
 // Handler handles user-related requests
 type Handler struct {
-	logger     *slog.Logger
-	deps       *sections.Dependencies
-	jwtManager *auth.JWTManager
+	logger      *slog.Logger
+	deps        *sections.Dependencies
+	jwtManager  *auth.JWTManager
+	userService *UserService
 }
 
 // NewHandler creates a new users handler
 func NewHandler(deps *sections.Dependencies, jwtManager *auth.JWTManager) *Handler {
 	return &Handler{
-		logger:     slog.With("handler", "UsersHandler"),
-		deps:       deps,
-		jwtManager: jwtManager,
+		logger:      slog.With("handler", "UsersHandler"),
+		deps:        deps,
+		jwtManager:  jwtManager,
+		userService: NewUserService(deps),
 	}
 }
 
@@ -105,17 +107,18 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	// Create user
-	user := models.User{
-		Email:        req.Email,
-		PasswordHash: string(hashedPassword),
-		FirstName:    req.FirstName,
-		LastName:     req.LastName,
-		Active:       true,
-	}
-
-	if err := h.deps.DB.DB.Create(&user).Error; err != nil {
-		h.logger.Error("Failed to create user", "error", err)
+	// Create user with tenant
+	user, _, err := h.userService.CreateUserWithTenant(c.Request.Context(), CreateUserWithTenantParams{
+		User: models.User{
+			Email:        req.Email,
+			PasswordHash: string(hashedPassword),
+			FirstName:    req.FirstName,
+			LastName:     req.LastName,
+			Active:       true,
+		},
+	})
+	if err != nil {
+		h.logger.Error("Failed to create user with tenant", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
 	}
@@ -132,7 +135,7 @@ func (h *Handler) Register(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, AuthResponse{
 		Token: token,
-		User:  h.toUserResponse(&user),
+		User:  h.toUserResponse(user),
 	})
 }
 
