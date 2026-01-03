@@ -400,6 +400,7 @@ func main() {
 	privateRoutes.Use(auth.TenantFromHeaderMiddleware(auth.DefaultTenantMiddlewareConfig()))
 
 	callbackRoutes := r.Group("/callbacks")
+	webhookRoutes := r.Group("/webhooks")
 
 	slog.Info("Database: ", slog.Any("database", database))
 	slog.Info("JWT Manager: ", slog.Any("jwt_manager", jwtManager))
@@ -454,7 +455,7 @@ func main() {
 
 		// Register payment routes if Stripe is configured
 		if stripeSvc != nil {
-			payment.RegisterRoutes(frontendRoutes, callbackRoutes, deps, jwtManager, stripeSvc)
+			payment.RegisterRoutes(frontendRoutes, webhookRoutes, deps, jwtManager, stripeSvc)
 			slog.Info("Payment routes registered")
 		}
 

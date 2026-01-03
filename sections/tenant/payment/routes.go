@@ -9,7 +9,7 @@ import (
 )
 
 // RegisterRoutes registers payment routes
-func RegisterRoutes(frontendRoutes, callbackRoutes *gin.RouterGroup, deps *sections.Dependencies, jwtManager *auth.JWTManager, stripeSvc *services.StripeService) {
+func RegisterRoutes(frontendRoutes, webhookRoutes *gin.RouterGroup, deps *sections.Dependencies, jwtManager *auth.JWTManager, stripeSvc *services.StripeService) {
 	handler := NewHandler(deps, stripeSvc)
 
 	// Protected routes for creating checkout sessions (requires authentication)
@@ -21,7 +21,7 @@ func RegisterRoutes(frontendRoutes, callbackRoutes *gin.RouterGroup, deps *secti
 	}
 
 	// Webhook routes (no authentication, verified via Stripe signature)
-	webhooks := callbackRoutes.Group("/stripe")
+	webhooks := webhookRoutes.Group("/stripe")
 	{
 		webhooks.POST("/webhook", handler.HandleWebhook)
 	}
