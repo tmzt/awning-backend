@@ -27,6 +27,7 @@ import (
 	"awning-backend/sections/tenant/domains"
 	"awning-backend/sections/tenant/filesystem"
 	"awning-backend/sections/tenant/images"
+	"awning-backend/sections/tenant/payment"
 	"awning-backend/sections/tenant/profile"
 	"awning-backend/services"
 	"awning-backend/storage"
@@ -188,6 +189,12 @@ func main() {
 	}
 	slog.Info("Prompt template loaded successfully")
 
+	plans, err := common.LoadPlans(cfgDir)
+	if err != nil {
+		slog.Error("Failed to load plans", "error", err)
+		os.Exit(1)
+	}
+
 	env := getEnv("APP_ENV", "production")
 
 	// Require api key and secret in production
@@ -253,6 +260,8 @@ func main() {
 			&models.Tenant{},
 			&models.User{},
 			&models.UserTenant{},
+			&models.Payment{},
+			&models.Subscription{},
 		); err != nil {
 			slog.Error("Failed to register models", "error", err)
 			os.Exit(1)
@@ -377,6 +386,8 @@ func main() {
 
 	frontendRoutes := r.Group("/")
 	frontendRoutes.Use(middleware.APIFrontendKeyAuthMiddleware(cfg.ApiFrontendKey))
+	frontendRoutes.Use(auth.JWTAuthMiddleware(jwtManager))
+	frontendRoutes.Use(auth.TenantFromHeaderMiddleware(auth.DefaultTenantMiddlewareConfig()))
 
 	callbackRoutes := r.Group("/callbacks")
 
@@ -409,6 +420,20 @@ func main() {
 			slog.Info("OAuth routes registered")
 		}
 
+		// Initialize Stripe service if configured
+		var stripeSvc *services.StripeService
+		stripeSecretKey := getEnv("STRIPE_SECRET_KEY", "")
+		stripeWebhookSecret := getEnv("STRIPE_WEBHOOK_SECRET", "")
+		if stripeSecretKey != "" && stripeWebhookSecret != "" {
+			slog.Info("Stripe keys provided, initializing Stripe service")
+			stripeSuccessURL := getEnv("STRIPE_SUCCESS_URL", cfg.BaseURL+"/payment/success")
+			stripeCancelURL := getEnv("STRIPE_CANCEL_URL", cfg.BaseURL+"/payment/cancel")
+			stripeSvc = services.NewStripeService(plans, stripeSecretKey, stripeWebhookSecret, stripeSuccessURL, stripeCancelURL)
+			slog.Info("Stripe service initialized")
+		} else {
+			slog.Info("Stripe not configured - payment features disabled")
+		}
+
 		// Register tenant-scoped routes
 		// Each RegisterRoutes function creates its own route group with JWT + tenant middleware
 		chat.RegisterRoutes(frontendRoutes, deps, jwtManager)
@@ -416,6 +441,12 @@ func main() {
 		profile.RegisterRoutes(frontendRoutes, deps, jwtManager)
 		account.RegisterRoutes(frontendRoutes, deps, jwtManager)
 		filesystem.RegisterRoutes(frontendRoutes, deps, jwtManager)
+
+		// Register payment routes if Stripe is configured
+		if stripeSvc != nil {
+			payment.RegisterRoutes(frontendRoutes, callbackRoutes, deps, jwtManager, stripeSvc)
+			slog.Info("Payment routes registered")
+		}
 
 		// Initialize domain registrar and register domain routes
 		registrarFactory := domains.NewRegistrarFactory()

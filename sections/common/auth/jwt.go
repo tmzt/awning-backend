@@ -166,6 +166,8 @@ func JWTAuthMiddleware(jwtManager *JWTManager) gin.HandlerFunc {
 			return
 		}
 
+		slog.Debug("JWT validated", "user_id", claims.UserID, "email", claims.Email, "tenantSchema", claims.TenantSchema)
+
 		// Set claims in context for downstream handlers
 		c.Set("claims", claims)
 		c.Set("userId", claims.UserID)
