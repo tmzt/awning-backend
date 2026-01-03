@@ -75,11 +75,15 @@ func LoadConfig(dir string) (*Config, error) {
 		configPath = DEFAULT_CONFIG_FILE
 	}
 
+	slog.Info("Loading config from", "config_path", configPath)
+
 	if !strings.HasPrefix(configPath, "/") && dir != "" {
 		configPath = path.Join(dir, configPath)
 	}
 
 	if _, err := os.Stat(configPath); err == nil {
+		slog.Info("Found config file", "config_path", configPath)
+
 		fileCfg, err := LoadConfigFile(configPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config file: %w", err)
